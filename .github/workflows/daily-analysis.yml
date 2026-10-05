@@ -1,23 +1,32 @@
-name: Kimathy daily analysis
+name: Kimathy manual analysis
 
 on:
-  schedule:
-    # Scheduled for 05:30 UTC / 08:30 East Africa Time each day.
-    - cron: '30 5 * * *'
   workflow_dispatch:
+    inputs:
+      confirm_requests:
+        description: "Confirm sports API requests (may use API credits)"
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
+concurrency:
+  group: kimathy-analysis-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   build-daily-ticket:
+    # Safety guard: no API requests unless the caller explicitly confirms.
+    if: ${{ inputs.confirm_requests == true }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - name: Check out project
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.12'
       - name: Install pipeline dependency

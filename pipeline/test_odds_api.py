@@ -71,7 +71,7 @@ class SportSelectionTests(unittest.TestCase):
     def test_two_soccer_market_families_rotate_within_credit_budget(self):
         soccer_day_one = [markets_for_sport(f"soccer_league_{i}", i, 739893) for i in range(8)]
         soccer_day_two = [markets_for_sport(f"soccer_league_{i}", i, 739894) for i in range(8)]
-        expected = {"totals", "btts", "double_chance", "h2h"}
+        expected = {"totals", "btts", "double_chance", "h2h", "spreads"}
         self.assertTrue(all(len(pair) == 2 for pair in soccer_day_one))
         self.assertEqual({market for pair in soccer_day_one for market in pair}, expected)
         self.assertNotEqual(soccer_day_one, soccer_day_two)
@@ -184,6 +184,67 @@ class EventNormalizationTests(unittest.TestCase):
                 {"name": "Home FC", "price": 1.55},
                 {"name": "Away FC", "price": 1.72},
             ])])],
+        }
+        self.assertEqual(normalize_event(event, "soccer_epl", now=NOW), [])
+
+    def test_soccer_spreads_are_labeled_two_way_and_keep_each_signed_line(self):
+        event = {
+            "id": "soccer-spread-1",
+            "commence_time": FUTURE,
+            "home_team": "Home FC",
+            "away_team": "Away FC",
+            "bookmakers": [bookmaker("book-one", "Book One", [
+                market("spreads", [
+                    {"name": "Home FC", "price": 1.62, "point": -0.5},
+                    {"name": "Away FC", "price": 1.58, "point": 0.5},
+                ]),
+            ])],
+        }
+        rows = normalize_event(event, "soccer_epl", now=NOW)
+        self.assertEqual({row["market_key"] for row in rows}, {
+            "football_home_spread", "football_away_spread"
+        })
+        home = next(row for row in rows if row["market_key"] == "football_home_spread")
+        away = next(row for row in rows if row["market_key"] == "football_away_spread")
+        self.assertEqual(home["market_point"], "-0.5")
+        self.assertEqual(away["market_point"], "0.5")
+        self.assertEqual(home["selection_side"], "home")
+        self.assertTrue(home["market_name"].startswith("Two-way Soccer Spread"))
+        self.assertIsNone(prepare_fixture(home))  # The quote alone is not a qualified pick.
+        self.assertIn("not a European three-way handicap", home["analysis_note"])
+        self.assertNotIn("European 3-way", home["market_name"])
+
+    def test_soccer_spreads_require_a_complete_pair_and_ignore_quarter_lines(self):
+        event = {
+            "commence_time": FUTURE,
+            "home_team": "Home FC",
+            "away_team": "Away FC",
+            "bookmakers": [bookmaker("book-one", "Book One", [
+                market("spreads", [
+                    {"name": "Home FC", "price": 1.62, "point": -0.25},
+                    {"name": "Away FC", "price": 1.58, "point": 0.25},
+                ]),
+            ])],
+        }
+        self.assertEqual(normalize_event(event, "soccer_epl", now=NOW), [])
+
+        event["bookmakers"][0]["markets"][0]["outcomes"] = [
+            {"name": "Home FC", "price": 1.62, "point": -0.5}
+        ]
+        self.assertEqual(normalize_event(event, "soccer_epl", now=NOW), [])
+
+    def test_soccer_european_three_way_handicap_is_not_inferred_from_match_winner(self):
+        event = {
+            "commence_time": FUTURE,
+            "home_team": "Home FC",
+            "away_team": "Away FC",
+            "bookmakers": [bookmaker("book-one", "Book One", [
+                market("h2h_3_way", [
+                    {"name": "Home FC", "price": 1.55},
+                    {"name": "Away FC", "price": 1.72},
+                    {"name": "Draw", "price": 1.68},
+                ]),
+            ])],
         }
         self.assertEqual(normalize_event(event, "soccer_epl", now=NOW), [])
 

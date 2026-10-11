@@ -32,15 +32,16 @@ EAT = ZoneInfo("Africa/Dar_es_Salaam")
 VALID_REGIONS = {"us", "us2", "uk", "eu", "au"}
 DEFAULT_REGION = "eu"
 DEFAULT_MAX_ODDS_AGE_MINUTES = 360
-# Up to 8 soccer + 2 basketball competitions. Two soccer families per league
-# plus the three supported basketball families cost at most 22 market credits
-# in one region (the connector also respects the provider's live remaining quota).
+# Up to 8 soccer + 2 basketball competitions. Two rotating soccer markets per
+# league plus three basketball families cost at most 22 market credits in one
+# region; all retries are charged to the same local cap.
 MAX_SPORT_KEYS_PER_RUN = 10
 MAX_MARKET_CREDITS_PER_RUN = 22
 CATEGORY_LIMITS = {"soccer": 8, "basketball": 2, "tennis": 0}
 MARKETS_BY_CATEGORY = {
-    # Use the existing daily credit budget on markets with independent stats.
-    "soccer": ("totals", "btts", "double_chance", "h2h"),
+    # Soccer spreads use the provider's two-way spreads market, never its
+    # ordinary three-way match-winner market.
+    "soccer": ("totals", "btts", "double_chance", "h2h", "spreads"),
     "basketball": ("h2h", "totals", "spreads"),
     # Tennis odds are paused until a permitted rankings/surface stats source exists.
     "tennis": ("h2h",),
@@ -212,10 +213,12 @@ def select_active_sport_keys(
 SOCCER_MARKET_PAIRS = (
     ("totals", "btts"),
     ("double_chance", "h2h"),
-    ("totals", "double_chance"),
+    ("totals", "spreads"),
     ("btts", "h2h"),
-    ("totals", "h2h"),
+    ("totals", "double_chance"),
+    ("spreads", "h2h"),
     ("btts", "double_chance"),
+    ("totals", "h2h"),
 )
 
 
@@ -223,10 +226,9 @@ def markets_for_sport(sport_key: str, soccer_index: int, rotation_day: int) -> t
     """Rotate two football market families per competition and all supported
     basketball families, using up to 22 market credits in one region.
 
-    The six football pairs rotate across the selected leagues and analysis day,
-    so all four families (totals, BTTS, double chance, direct 1X2) are sampled
-    across the slate without weakening the stats gates. Basketball keeps its
-    three supported market families.
+    Across eight selected soccer competitions the rotating pairs cover totals,
+    BTTS, double chance, direct 1X2, and two-way spreads; basketball keeps its
+    three supported market families. Rotation never raises the credit cap.
     """
     category = _category(sport_key)
     if category is None:
@@ -306,6 +308,11 @@ def _make_candidate(
     away = str(event.get("away_team", "")).strip()
     competition = str(event.get("sport_title", sport_key)).strip()
     updated = quote.updated_at.isoformat().replace("+00:00", "Z")
+    spread_note = (
+        " This is a two-way soccer spread, not a European three-way handicap."
+        if quote.market_key in {"football_home_spread", "football_away_spread"}
+        else ""
+    )
     return {
         "sport_type": sport,
         "match_name": f"{home} vs {away}",
@@ -321,7 +328,7 @@ def _make_candidate(
         "analysis_note": (
             f"Current decimal quote from {quote.bookmaker_name} ({competition}); "
             f"bookmaker update {updated}. The odds feed does not include the form/ranking "
-            "evidence required for a recommendation."
+            f"evidence required for a recommendation.{spread_note}"
         ),
         "source": "the-odds-api",
         "event_id": str(event.get("id", "")),
@@ -341,6 +348,14 @@ def _line(value: Any) -> Decimal | None:
     return result if result.is_finite() else None
 
 
+def _supported_soccer_spread_point(value: Any) -> Decimal | None:
+    """Allow conventional whole/half-goal lines, not quarter-line partial bets."""
+    point = _line(value)
+    if point is None or abs(point) > Decimal("5"):
+        return None
+    return point if point * 2 == (point * 2).to_integral_value() else None
+
+
 def _contains_tokens(haystack: list[str], needle: list[str]) -> bool:
     if not needle or len(needle) > len(haystack):
         return False
@@ -355,8 +370,9 @@ def normalize_event(
 ) -> list[dict[str, Any]]:
     """Convert one v4 event into fresh, explicitly mapped market candidates.
 
-    Football totals, BTTS, double chance and direct three-way 1X2 results are
-    kept distinct. Basketball moneyline, totals and handicap outcomes carry
+    Football totals, BTTS, double chance, direct three-way 1X2, and the
+    provider's two-way soccer spreads are kept distinct. European 3-way handicap
+    is not inferred. Basketball moneyline, totals and handicap outcomes carry
     their exact selection/line. A 1X2 outcome is never relabelled as double chance.
     """
     category = _category(sport_key)
@@ -502,6 +518,56 @@ def normalize_event(
                             bookmaker_key, bookmaker_name, updated,
                         ),
                     )
+
+            if sport == "football" and market_key == "spreads":
+                # The Odds API's soccer spreads are two-way point-spread
+                # outcomes. Require the matching home/away lines and never
+                # map them to a European home/draw/away handicap.
+                by_home_line: dict[Decimal, dict[str, tuple[Decimal, Decimal]]] = {}
+                invalid_lines: set[Decimal] = set()
+                for outcome in outcomes:
+                    if not isinstance(outcome, dict):
+                        continue
+                    outcome_team = _name_key(outcome.get("name", ""))
+                    side = "home" if outcome_team == home_key else "away" if outcome_team == away_key else ""
+                    point = _supported_soccer_spread_point(outcome.get("point"))
+                    price = _decimal(outcome.get("price"))
+                    if not side or point is None or price is None:
+                        continue
+                    home_line = point if side == "home" else -point
+                    side_map = by_home_line.setdefault(home_line, {})
+                    if side in side_map:
+                        invalid_lines.add(home_line)
+                        continue
+                    side_map[side] = (point, price)
+                for home_line, side_map in by_home_line.items():
+                    if home_line in invalid_lines or set(side_map) != {"home", "away"}:
+                        continue
+                    home_point, home_price = side_map["home"]
+                    away_point, away_price = side_map["away"]
+                    if home_point != -away_point:
+                        continue
+                    for side, point, price in (
+                        ("home", home_point, home_price),
+                        ("away", away_point, away_price),
+                    ):
+                        key = f"football_{side}_spread"
+                        team = home if side == "home" else away
+                        line_text = f"{point:+}"
+                        add_quote(
+                            (key, str(point)),
+                            Quote(
+                                key,
+                                f"Two-way Soccer Spread · {team} ({line_text})",
+                                f"{team} ({line_text})",
+                                price,
+                                bookmaker_key,
+                                bookmaker_name,
+                                updated,
+                                point,
+                                side,
+                            ),
+                        )
 
             if sport == "basketball" and market_key == "h2h":
                 for outcome in outcomes:

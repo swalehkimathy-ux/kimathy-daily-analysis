@@ -101,6 +101,33 @@ def football_h2h_payload():
     return {"response": response}
 
 
+def football_team_history_payloads():
+    histories = {}
+    for team_id in (1, 2):
+        rows = []
+        for index in range(5):
+            if team_id == 1:
+                home_id, away_id = 1, 101 + index
+                score = {"home": 2, "away": 1}
+            else:
+                home_id, away_id = 201 + index, 2
+                score = {"home": 2, "away": 0}
+            rows.append({
+                "fixture": {
+                    "id": 7000 + team_id * 10 + index,
+                    "date": f"2026-09-{25 + index:02d}T15:00:00Z",
+                    "status": {"short": "FT", "long": "Match Finished"},
+                },
+                "teams": {
+                    "home": {"id": home_id, "name": f"Team {home_id}"},
+                    "away": {"id": away_id, "name": f"Team {away_id}"},
+                },
+                "goals": score,
+            })
+        histories[str(team_id)] = {"response": rows}
+    return histories
+
+
 def basketball_candidate():
     return {
         "sport_type": "basketball",
@@ -183,12 +210,16 @@ class APISportsEnrichmentTests(unittest.TestCase):
     NOW = datetime(2026, 10, 4, 7, 0, tzinfo=timezone.utc)
 
     def test_football_standings_and_h2h_enrich_a_qualified_candidate(self):
+        team_histories = football_team_history_payloads()
+
         def handler(call):
-            url = call["url"]
+            url, params = call["url"], call["params"]
             if url.endswith("/status"):
                 return FakeResponse({"response": {"requests": {"current": 2, "limit_day": 100}}})
-            if url.endswith("/fixtures"):
+            if url.endswith("/fixtures") and "date" in params:
                 return FakeResponse(football_schedule_payload())
+            if url.endswith("/fixtures") and "team" in params:
+                return FakeResponse(team_histories[str(params["team"])])
             if url.endswith("/standings"):
                 return FakeResponse(football_standings_payload())
             if url.endswith("/fixtures/headtohead"):
@@ -211,7 +242,7 @@ class APISportsEnrichmentTests(unittest.TestCase):
             sessions={"football": session},
         )
 
-        self.assertEqual(result.football_calls, 2)  # schedule + market-relevant head-to-head
+        self.assertEqual(result.football_calls, 4)  # schedule + H2H + two cached team-form calls
         self.assertEqual(result.football_enriched, 2)
         row = result.fixtures[0]
         self.assertEqual(row["features"]["historical_total_goals_sample"], 5)
@@ -224,6 +255,9 @@ class APISportsEnrichmentTests(unittest.TestCase):
         self.assertEqual(row["features"]["historical_home_win_count"], 4)
         self.assertEqual(row["features"]["historical_draw_count"], 1)
         self.assertEqual(row["features"]["historical_away_win_count"], 0)
+        self.assertEqual(row["features"]["home_form_matches_sample"], 5)
+        self.assertEqual(row["features"]["away_form_matches_sample"], 5)
+        self.assertEqual(row["features"]["home_form_over_0_5_rate"], 1.0)
         self.assertEqual(result.football_join_diagnostics["matched_candidates"], 2)
         self.assertIn("api-sports", row["source"])
         self.assertNotIn("does not include the form/ranking evidence", row["analysis_note"])
@@ -231,6 +265,159 @@ class APISportsEnrichmentTests(unittest.TestCase):
         self.assertIsNotNone(prepare_fixture(result.fixtures[1]))
         self.assertEqual(result.fixtures[1]["market_key"], "home_win_1x2")
         self.assertTrue(all(c["headers"].get("x-apisports-key") == "offline-test-key" for c in session.calls))
+
+    def test_soccer_spread_enrichment_uses_line_matched_h2h_and_team_form(self):
+        team_histories = football_team_history_payloads()
+        candidate = football_candidate()
+        candidate.update({
+            "market_key": "football_home_spread",
+            "market_name": "Two-way Soccer Spread · Premier Home FC (-0.5)",
+            "market_point": "-0.5",
+            "selection_side": "home",
+            "picked_odds": "1.62",
+        })
+
+        def handler(call):
+            url, params = call["url"], call["params"]
+            if url.endswith("/status"):
+                return FakeResponse({"response": {"requests": {"current": 0, "limit_day": 100}}})
+            if url.endswith("/fixtures") and "date" in params:
+                return FakeResponse(football_schedule_payload())
+            if url.endswith("/fixtures") and "team" in params:
+                return FakeResponse(team_histories[str(params["team"])])
+            if url.endswith("/fixtures/headtohead"):
+                return FakeResponse(football_h2h_payload())
+            self.fail(f"Unexpected request path: {url} {params}")
+
+        session = FakeSession(handler)
+        result = enrich_odds_candidates(
+            [candidate],
+            football_key="offline-test-key",
+            analysis_day="2026-10-04",
+            now=self.NOW,
+            sessions={"football": session},
+        )
+        row = result.fixtures[0]
+        features = row["features"]
+        self.assertEqual(result.football_calls, 4)
+        self.assertEqual(features["historical_spread_sample"], 5)
+        self.assertEqual(features["historical_spread_cover_count"], 4)
+        self.assertEqual(features["historical_spread_line"], "-0.5")
+        self.assertEqual(features["selected_spread_form_rate"], 1.0)
+        self.assertEqual(features["opponent_spread_form_rate"], 0.0)
+        self.assertIsNotNone(prepare_fixture(row))
+
+    def test_football_enrichment_respects_60_attempt_budget_including_form(self):
+        candidates, schedule, h2h_by_pair, histories, standings_by_league = [], [], {}, {}, {}
+
+        for index in range(27):
+            home_id, away_id = 1000 + 2 * index, 1001 + 2 * index
+            home_name, away_name = f"Home {index} FC", f"Away {index} FC"
+            candidates.append({
+                **football_candidate(),
+                "home_team": home_name,
+                "away_team": away_name,
+                "match_name": f"{home_name} vs {away_name}",
+                "market_key": "over_1_5_goals",
+                "market_name": "Over 1.5 Goals",
+                "market_point": "1.5",
+                "features": {},
+            })
+            schedule.append({
+                "fixture": {"id": 9000 + index, "date": "2026-10-04T15:00:00+03:00", "status": {"short": "NS"}},
+                "league": {"id": 39, "name": "Example League", "season": 2026},
+                "teams": {
+                    "home": {"id": home_id, "name": home_name},
+                    "away": {"id": away_id, "name": away_name},
+                },
+            })
+            h2h_by_pair[f"{home_id}-{away_id}"] = {"response": [
+                {
+                    "fixture": {
+                        "id": 80000 + index * 5 + match_index,
+                        "date": f"2026-09-{10 + match_index:02d}T15:00:00Z",
+                        "status": {"short": "FT"},
+                    },
+                    "teams": {
+                        "home": {"id": home_id, "name": home_name},
+                        "away": {"id": away_id, "name": away_name},
+                    },
+                    "goals": {"home": 2, "away": 1},
+                }
+                for match_index in range(5)
+            ]}
+            for team_id in (home_id, away_id):
+                histories[str(team_id)] = {"response": [
+                    {
+                        "fixture": {
+                            "id": 70000 + team_id * 10 + match_index,
+                            "date": f"2026-09-{1 + match_index:02d}T15:00:00Z",
+                            "status": {"short": "FT"},
+                        },
+                        "teams": {
+                            "home": {"id": team_id, "name": f"Team {team_id}"},
+                            "away": {"id": 50000 + team_id, "name": "Opponent"},
+                        },
+                        "goals": {"home": 2, "away": 1},
+                    }
+                    for match_index in range(5)
+                ]}
+
+        for index in range(8):
+            home_id, away_id = 5000 + 2 * index, 5001 + 2 * index
+            home_name, away_name = f"Standings Home {index}", f"Standings Away {index}"
+            candidate = football_candidate()
+            candidate.update({
+                "home_team": home_name,
+                "away_team": away_name,
+                "match_name": f"{home_name} vs {away_name}",
+                "market_key": "double_chance_1x",
+                "market_name": "Double Chance · 1X",
+                "features": {},
+            })
+            candidates.append(candidate)
+            schedule.append({
+                "fixture": {"id": 9500 + index, "date": "2026-10-04T15:00:00+03:00", "status": {"short": "NS"}},
+                "league": {"id": 100 + index, "name": f"League {index}", "season": 2026},
+                "teams": {
+                    "home": {"id": home_id, "name": home_name},
+                    "away": {"id": away_id, "name": away_name},
+                },
+            })
+            table = []
+            for rank in range(1, 21):
+                team_id = home_id if rank == 2 else away_id if rank == 18 else 60000 + index * 30 + rank
+                table.append({
+                    "rank": rank,
+                    "team": {"id": team_id, "name": f"Team {team_id}"},
+                    "all": {"played": 10},
+                })
+            standings_by_league[str(100 + index)] = {"response": [{"league": {"standings": [table]}}]}
+
+        def handler(call):
+            url, params = call["url"], call["params"]
+            if url.endswith("/status"):
+                return FakeResponse({"response": {"requests": {"current": 0, "limit_day": 200}}})
+            if url.endswith("/fixtures") and "date" in params:
+                return FakeResponse({"response": schedule})
+            if url.endswith("/fixtures") and "team" in params:
+                return FakeResponse(histories[str(params["team"])])
+            if url.endswith("/fixtures/headtohead"):
+                return FakeResponse(h2h_by_pair[params["h2h"]])
+            if url.endswith("/standings"):
+                return FakeResponse(standings_by_league[str(params["league"])])
+            self.fail(f"Unexpected request path: {url} {params}")
+
+        session = FakeSession(handler)
+        result = enrich_odds_candidates(
+            candidates,
+            football_key="offline-test-key",
+            analysis_day="2026-10-04",
+            now=self.NOW,
+            sessions={"football": session},
+        )
+        self.assertEqual(result.football_calls, 60)
+        self.assertEqual(len(session.calls), 61)  # one non-billable status check plus 60 capped requests
 
     def test_basketball_recent_home_form_and_away_loss_streak_enrich(self):
         history = basketball_history_payloads()
@@ -381,6 +568,15 @@ class APISportsEnrichmentTests(unittest.TestCase):
         away_win = {"goals": {"home": 1, "away": 2}}
         self.assertEqual(_result_outcome({**home_win, "market_key": "home_win_1x2"}, "football"), "win")
         self.assertEqual(_result_outcome({**away_win, "market_key": "away_win_1x2"}, "football"), "win")
+        self.assertEqual(_result_outcome({
+            **home_win, "market_key": "football_home_spread", "market_point": "-0.5", "selection_side": "home"
+        }, "football"), "win")
+        self.assertEqual(_result_outcome({
+            **home_win, "market_key": "football_home_spread", "market_point": "-1", "selection_side": "home"
+        }, "football"), "void")
+        self.assertIsNone(_result_outcome({
+            **home_win, "market_key": "football_home_spread", "market_point": "-0.25", "selection_side": "home"
+        }, "football"))
         basket = {"scores": {"home": {"total": 100}, "away": {"total": 95}}}
         self.assertEqual(_result_outcome({**basket, "market_key": "basketball_home_spread", "market_point": "-5", "selection_side": "home"}, "basketball"), "void")
         self.assertEqual(_result_outcome({**basket, "market_key": "basketball_total_over", "market_point": "190.5"}, "basketball"), "win")

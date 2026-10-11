@@ -21,9 +21,11 @@ TARGET_MIN = Decimal("1.50")
 TARGET_MAX = Decimal("1.90")
 
 FOOTBALL_1X2_MARKETS = {"home_win_1x2", "draw_1x2", "away_win_1x2"}
+FOOTBALL_SPREAD_MARKETS = {"football_home_spread", "football_away_spread"}
 FOOTBALL_MARKETS = {
     "double_chance_1x",
     *FOOTBALL_1X2_MARKETS,
+    *FOOTBALL_SPREAD_MARKETS,
     "btts_yes",
     "btts_no",
     "over_0_5_goals",
@@ -78,7 +80,12 @@ def _safe_float(value: Any, default: float = 0.0) -> float:
         return default
 
 
-def _football_market_evidence(market: str, features: dict[str, Any]) -> bool:
+def _football_market_evidence(
+    market: str,
+    features: dict[str, Any],
+    market_point: Any = None,
+    selection_side: Any = None,
+) -> bool:
     if market == "double_chance_1x":
         table_size = _safe_int(features.get("league_table_size"))
         home_played = _safe_int(features.get("home_league_matches"))
@@ -102,6 +109,36 @@ def _football_market_evidence(market: str, features: dict[str, Any]) -> bool:
         hits = _safe_int(features.get(count_key), -1)
         return sample >= 5 and 0 <= hits <= sample and hits >= 4
 
+    if market in FOOTBALL_SPREAD_MARKETS:
+        expected_side = "home" if market == "football_home_spread" else "away"
+        try:
+            line = _decimal(market_point)
+            evidence_line = _decimal(features.get("historical_spread_line"))
+        except ValueError:
+            return False
+        if (
+            str(selection_side or "").strip().lower() != expected_side
+            or abs(line) > Decimal("5")
+            or line * 2 != (line * 2).to_integral_value()
+            or evidence_line != line
+        ):
+            return False
+        h2h_sample = _safe_int(features.get("historical_spread_sample"))
+        h2h_hits = _safe_int(features.get("historical_spread_cover_count"), -1)
+        selected_sample = _safe_int(features.get("selected_spread_form_sample"))
+        opponent_sample = _safe_int(features.get("opponent_spread_form_sample"))
+        selected_rate = _safe_float(features.get("selected_spread_form_rate"), -1)
+        opponent_rate = _safe_float(features.get("opponent_spread_form_rate"), -1)
+        return (
+            h2h_sample >= 5
+            and 0 <= h2h_hits <= h2h_sample
+            and h2h_hits >= 4
+            and selected_sample >= 5
+            and opponent_sample >= 5
+            and 0.70 <= selected_rate <= 1.0
+            and 0.0 <= opponent_rate <= 0.30
+        )
+
     if market in {"btts_yes", "btts_no"}:
         sample = _safe_int(features.get("historical_btts_sample"))
         yes_count = _safe_int(features.get("historical_btts_yes_count"), -1)
@@ -117,15 +154,37 @@ def _football_market_evidence(market: str, features: dict[str, Any]) -> bool:
     sample = _safe_int(features.get("historical_total_goals_sample"))
     over_count = _safe_int(features.get(f"historical_over_{line_tag}_count"), -1)
     if sample < 5 or over_count < 0 or over_count > sample:
-        # Backwards compatibility for the old, stricter 3+ goal flag on O0.5.
-        if market == "over_0_5_goals":
-            return (
-                features.get("historical_high_goal_match") is True
-                and _safe_int(features.get("historical_high_goal_sample")) >= 5
-            )
+        # Backwards compatibility for the old, stricter 3+ goal flag on O0.5;
+        # it still must pass the separate recent-form checks below.
+        if not (
+            market == "over_0_5_goals"
+            and features.get("historical_high_goal_match") is True
+            and _safe_int(features.get("historical_high_goal_sample")) >= 5
+        ):
+            return False
+        hits = 4
+    else:
+        hits = over_count if direction == "over" else sample - over_count
+    if hits < 4:
         return False
-    hits = over_count if direction == "over" else sample - over_count
-    return hits >= 4
+
+    # Keep the hard 4-of-5 H2H threshold and require a separate five-match
+    # sample for each team. Recent scoreline trends must support the selected
+    # direction overall without either team's trend strongly contradicting it.
+    home_form_sample = _safe_int(features.get("home_form_matches_sample"))
+    away_form_sample = _safe_int(features.get("away_form_matches_sample"))
+    home_over_rate = _safe_float(features.get(f"home_form_over_{line_tag}_rate"), -1)
+    away_over_rate = _safe_float(features.get(f"away_form_over_{line_tag}_rate"), -1)
+    if (
+        home_form_sample < 5
+        or away_form_sample < 5
+        or not 0.0 <= home_over_rate <= 1.0
+        or not 0.0 <= away_over_rate <= 1.0
+    ):
+        return False
+    home_form_hit = home_over_rate if direction == "over" else 1.0 - home_over_rate
+    away_form_hit = away_over_rate if direction == "over" else 1.0 - away_over_rate
+    return min(home_form_hit, away_form_hit) >= 0.40 and (home_form_hit + away_form_hit) / 2 >= 0.60
 
 
 def _strategy_matches(fixture: dict[str, Any]) -> bool:
@@ -134,7 +193,16 @@ def _strategy_matches(fixture: dict[str, Any]) -> bool:
     f = _features(fixture)
 
     if sport == "football":
-        return market in FOOTBALL_MARKETS and _football_market_evidence(market, f)
+        if market in FOOTBALL_SPREAD_MARKETS:
+            market_name = str(fixture.get("market_name", "")).strip().lower()
+            if "two-way" not in market_name or "european" in market_name:
+                return False
+        return market in FOOTBALL_MARKETS and _football_market_evidence(
+            market,
+            f,
+            fixture.get("market_point"),
+            fixture.get("selection_side"),
+        )
 
     if sport == "basketball":
         if market == "home_moneyline":
@@ -205,6 +273,12 @@ def _heuristic_score(fixture: dict[str, Any]) -> float:
             hits = _safe_int(f.get(count_key))
             sample = _safe_int(f.get("historical_1x2_sample"), 5)
             return min(99.0, 70.0 + max(0, hits - 3) * 5.0 + max(0, sample - 5))
+        if market in FOOTBALL_SPREAD_MARKETS:
+            h2h_hits = _safe_int(f.get("historical_spread_cover_count"))
+            selected_rate = _safe_float(f.get("selected_spread_form_rate"))
+            opponent_rate = _safe_float(f.get("opponent_spread_form_rate"))
+            support = max(0.0, selected_rate - 0.70) + max(0.0, 0.30 - opponent_rate)
+            return min(99.0, 70.0 + max(0, h2h_hits - 3) * 5.0 + support * 15.0)
         if market in {"btts_yes", "btts_no"}:
             sample = max(1, _safe_int(f.get("historical_btts_sample"), 5))
             count = _safe_int(f.get("historical_btts_yes_count"))
@@ -216,7 +290,15 @@ def _heuristic_score(fixture: dict[str, Any]) -> float:
             sample = max(1, _safe_int(f.get("historical_total_goals_sample"), 5))
             count = _safe_int(f.get(f"historical_over_{line_tag}_count"))
             hits = count if direction == "over" else sample - count
-            return min(99.0, 70.0 + max(0, hits - 3) * 5.0 + max(0, sample - 5))
+            home_over_rate = _safe_float(f.get(f"home_form_over_{line_tag}_rate"), -1)
+            away_over_rate = _safe_float(f.get(f"away_form_over_{line_tag}_rate"), -1)
+            form_rate = (
+                (home_over_rate + away_over_rate) / 2
+                if direction == "over"
+                else (2.0 - home_over_rate - away_over_rate) / 2
+            )
+            form_bonus = max(0.0, form_rate - 0.60) * 15.0
+            return min(99.0, 70.0 + max(0, hits - 3) * 5.0 + max(0, sample - 5) + form_bonus)
         return 0.0
 
     if sport == "basketball":

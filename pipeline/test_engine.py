@@ -12,7 +12,17 @@ def football_candidate(name, odd=1.12, market="double_chance_1x", features=None,
         "match_time": "2026-10-04T15:30:00+03:00",
         "market_name": market.replace("_", " ").title(),
         "market_key": market,
-        "market_point": 1.5 if market.startswith(("over_", "under_")) else None,
+        "market_point": (
+            1.5 if market.startswith(("over_", "under_"))
+            else -0.5 if market == "football_home_spread"
+            else 0.5 if market == "football_away_spread"
+            else None
+        ),
+        "selection_side": (
+            "home" if market == "football_home_spread"
+            else "away" if market == "football_away_spread"
+            else None
+        ),
         "picked_odds": odd,
         "event_id": event_id or name,
         "features": features or {
@@ -46,6 +56,33 @@ class EligibilityTests(unittest.TestCase):
         raw["picked_odds"] = 1.81
         self.assertIsNone(prepare_fixture(raw))
 
+    def test_football_two_way_spread_needs_five_h2h_and_recent_cover_form(self):
+        raw = football_candidate(
+            "Home vs Away", 1.05, "football_home_spread",
+            {
+                "historical_spread_sample": 5,
+                "historical_spread_cover_count": 4,
+                "historical_spread_line": "-0.5",
+                "selected_spread_form_sample": 5,
+                "selected_spread_form_rate": 0.80,
+                "opponent_spread_form_sample": 5,
+                "opponent_spread_form_rate": 0.20,
+            },
+        )
+        raw["market_name"] = "Two-way Soccer Spread · Home (-0.5)"
+        self.assertIsNotNone(prepare_fixture(raw))
+        raw["market_point"] = -1.0  # Evidence must match the quoted handicap line.
+        self.assertIsNone(prepare_fixture(raw))
+        raw["market_point"] = -0.5
+        raw["market_name"] = "European Handicap · Home (-0.5)"
+        self.assertIsNone(prepare_fixture(raw))
+        raw["market_name"] = "Two-way Soccer Spread · Home (-0.5)"
+        raw["selection_side"] = "away"
+        self.assertIsNone(prepare_fixture(raw))
+        raw["selection_side"] = "home"
+        raw["picked_odds"] = 1.04
+        self.assertIsNone(prepare_fixture(raw))
+
     def test_football_btts_requires_five_h2h_matches_and_market_specific_hit_rate(self):
         raw = football_candidate(
             "Home vs Away", 1.55, "btts_yes",
@@ -60,9 +97,21 @@ class EligibilityTests(unittest.TestCase):
     def test_football_totals_require_line_specific_h2h_evidence(self):
         raw = football_candidate(
             "Home vs Away", 1.48, "over_1_5_goals",
-            {"historical_total_goals_sample": 5, "historical_over_1_5_count": 4},
+            {
+                "historical_total_goals_sample": 5,
+                "historical_over_1_5_count": 4,
+                "home_form_matches_sample": 5,
+                "away_form_matches_sample": 5,
+                "home_form_over_1_5_rate": 0.80,
+                "away_form_over_1_5_rate": 0.60,
+            },
         )
         self.assertIsNotNone(prepare_fixture(raw))
+        raw["features"].pop("away_form_over_1_5_rate")
+        self.assertIsNone(prepare_fixture(raw))
+        raw["features"]["away_form_over_1_5_rate"] = 0.20
+        self.assertIsNone(prepare_fixture(raw))
+        raw["features"]["away_form_over_1_5_rate"] = 0.60
         raw["market_key"] = "over_2_5_goals"
         raw["features"]["historical_over_2_5_count"] = 3
         self.assertIsNone(prepare_fixture(raw))
@@ -147,7 +196,14 @@ class AccumulatorTests(unittest.TestCase):
         first = self.row("Home vs Away", 1.30, 90, event_id="same-event")
         second = football_candidate(
             "Home vs Away", 1.30, "over_1_5_goals",
-            {"historical_total_goals_sample": 5, "historical_over_1_5_count": 4},
+            {
+                "historical_total_goals_sample": 5,
+                "historical_over_1_5_count": 4,
+                "home_form_matches_sample": 5,
+                "away_form_matches_sample": 5,
+                "home_form_over_1_5_rate": 0.80,
+                "away_form_over_1_5_rate": 0.60,
+            },
             event_id="same-event",
         )
         second["confidence_score"] = 95

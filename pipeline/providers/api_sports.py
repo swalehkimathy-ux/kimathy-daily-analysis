@@ -23,14 +23,21 @@ FOOTBALL_BASE = "https://v3.football.api-sports.io"
 BASKETBALL_BASE = "https://v1.basketball.api-sports.io"
 EAT = ZoneInfo("Africa/Dar_es_Salaam")
 DEFAULT_RUN_LIMIT = 60
-FOOTBALL_STANDINGS_LIMIT = 12
-# Reserve within the 60-call enrichment ceiling: one schedule + up to 12 standings + 45 H2H.
-FOOTBALL_H2H_LIMIT = 45
+FOOTBALL_STANDINGS_LIMIT = 8
+# Reserve within the 60-call enrichment ceiling: one schedule + up to 8 standings
+# + 27 H2H + 24 recent-team-form calls. Provider quota may lower this further.
+FOOTBALL_H2H_LIMIT = 27
+FOOTBALL_FORM_LIMIT = 24
 BASKETBALL_TEAM_HISTORY_LIMIT = 40
-FOOTBALL_H2H_MARKETS = {
-    "btts_yes", "btts_no", "over_0_5_goals", "over_1_5_goals", "over_2_5_goals",
+FOOTBALL_SPREAD_MARKETS = {"football_home_spread", "football_away_spread"}
+FOOTBALL_TOTAL_MARKETS = {
+    "over_0_5_goals", "over_1_5_goals", "over_2_5_goals",
     "under_0_5_goals", "under_1_5_goals", "under_2_5_goals",
-    "home_win_1x2", "draw_1x2", "away_win_1x2",
+}
+FOOTBALL_FORM_MARKETS = FOOTBALL_TOTAL_MARKETS | FOOTBALL_SPREAD_MARKETS
+FOOTBALL_H2H_MARKETS = {
+    "btts_yes", "btts_no", *FOOTBALL_TOTAL_MARKETS,
+    "home_win_1x2", "draw_1x2", "away_win_1x2", *FOOTBALL_SPREAD_MARKETS,
 }
 MIN_STANDINGS_MATCHES = 5
 MIN_STANDINGS_TEAMS = 10
@@ -495,22 +502,30 @@ def _football_h2h_evidence(
     target_time: datetime,
     fixture_home_id: str | None = None,
     fixture_away_id: str | None = None,
+    selected_team_id: str | None = None,
+    market_point: Any = None,
 ) -> dict[str, Any] | None:
+    future_home, future_away = _id(fixture_home_id), _id(fixture_away_id)
     results: list[tuple[datetime, int, int, str, str]] = []
     for row in _response_rows(payload):
         parts = _game_parts(row)
         score = _goals(row)
-        if not score or not parts.get("time") or parts["time"] >= target_time:
+        game_time = parts.get("time")
+        historical_home, historical_away = parts.get("home_id", ""), parts.get("away_id", "")
+        if not score or not game_time or game_time >= target_time:
             continue
         if not _final_status(parts.get("status"), "football"):
             continue
-        results.append((
-            parts["time"], score[0], score[1], parts.get("home_id", ""), parts.get("away_id", "")
-        ))
+        if future_home and future_away and not (
+            {historical_home, historical_away} == {future_home, future_away}
+        ):
+            continue
+        results.append((game_time, score[0], score[1], historical_home, historical_away))
     results.sort(key=lambda item: item[0], reverse=True)
     sample = results[:5]
     if len(sample) < 5:
         return None
+
     totals = [home + away for _, home, away, _, _ in sample]
     btts_yes_count = sum(1 for _, home, away, _, _ in sample if home > 0 and away > 0)
     evidence: dict[str, Any] = {
@@ -523,12 +538,9 @@ def _football_h2h_evidence(
     evidence["historical_high_goal_match"] = evidence["historical_over_2_5_count"] >= 4
     evidence["historical_high_goal_sample"] = len(sample)
 
-    future_home, future_away = _id(fixture_home_id), _id(fixture_away_id)
     if future_home and future_away:
         outcomes: list[str] = []
         for _, score_home, score_away, historical_home, historical_away in sample:
-            if not historical_home or not historical_away:
-                continue
             if historical_home == future_home and historical_away == future_away:
                 outcomes.append("home" if score_home > score_away else "away" if score_home < score_away else "draw")
             elif historical_home == future_away and historical_away == future_home:
@@ -537,7 +549,125 @@ def _football_h2h_evidence(
         evidence["historical_home_win_count"] = outcomes.count("home")
         evidence["historical_draw_count"] = outcomes.count("draw")
         evidence["historical_away_win_count"] = outcomes.count("away")
+
+    selected_id = _id(selected_team_id)
+    if selected_id and future_home and future_away:
+        try:
+            line = Decimal(str(market_point))
+        except (InvalidOperation, TypeError, ValueError):
+            line = None
+        if (
+            line is not None
+            and line.is_finite()
+            and abs(line) <= Decimal("5")
+            and line * 2 == (line * 2).to_integral_value()
+        ):
+            covers: list[bool] = []
+            for _, score_home, score_away, historical_home, historical_away in sample:
+                if historical_home == selected_id:
+                    selected_score, opponent_score = score_home, score_away
+                elif historical_away == selected_id:
+                    selected_score, opponent_score = score_away, score_home
+                else:
+                    continue
+                covers.append(Decimal(selected_score) + line > Decimal(opponent_score))
+            evidence["historical_spread_sample"] = len(covers)
+            evidence["historical_spread_cover_count"] = sum(covers)
+            evidence["historical_spread_line"] = str(line)
     return evidence
+
+
+def _football_team_form_records(
+    payload: dict[str, Any], team_id: str, target_time: datetime
+) -> list[tuple[datetime, int, int]]:
+    """Return the five latest completed team games before the target kickoff."""
+    requested_team = _id(team_id)
+    records: list[tuple[datetime, int, int]] = []
+    if not requested_team:
+        return records
+    for row in _response_rows(payload):
+        parts = _game_parts(row)
+        game_time = parts.get("time")
+        score = _goals(row)
+        home_id, away_id = parts.get("home_id", ""), parts.get("away_id", "")
+        if (
+            not game_time
+            or game_time >= target_time
+            or not score
+            or not _final_status(parts.get("status"), "football")
+        ):
+            continue
+        if home_id == requested_team:
+            goals_for, goals_against = score
+        elif away_id == requested_team:
+            goals_for, goals_against = score[1], score[0]
+        else:
+            continue
+        records.append((game_time, goals_for, goals_against))
+    records.sort(key=lambda item: item[0], reverse=True)
+    return records[:5]
+
+
+def _football_form_features(
+    home_records: list[tuple[datetime, int, int]],
+    away_records: list[tuple[datetime, int, int]],
+    market_key: str,
+    market_point: Any,
+    selection_side: Any,
+) -> dict[str, Any]:
+    """Convert recent team scorelines into market-line-specific rates."""
+    if len(home_records) < 5 or len(away_records) < 5:
+        return {}
+    features: dict[str, Any] = {}
+    for role, records in (("home", home_records), ("away", away_records)):
+        features[f"{role}_form_matches_sample"] = len(records)
+        features[f"{role}_form_goals_for_average"] = round(
+            sum(goals_for for _, goals_for, _ in records) / len(records), 3
+        )
+        features[f"{role}_form_goals_against_average"] = round(
+            sum(goals_against for _, _, goals_against in records) / len(records), 3
+        )
+        totals = [goals_for + goals_against for _, goals_for, goals_against in records]
+        for tag, threshold in (("0_5", 1), ("1_5", 2), ("2_5", 3)):
+            features[f"{role}_form_over_{tag}_rate"] = round(
+                sum(total >= threshold for total in totals) / len(totals), 4
+            )
+
+    if market_key in FOOTBALL_SPREAD_MARKETS:
+        try:
+            line = Decimal(str(market_point))
+        except (InvalidOperation, TypeError, ValueError):
+            return features
+        side = str(selection_side or "").strip().lower()
+        if (
+            not line.is_finite()
+            or abs(line) > Decimal("5")
+            or line * 2 != (line * 2).to_integral_value()
+            or side not in {"home", "away"}
+        ):
+            return features
+        selected_records, opponent_records = (
+            (home_records, away_records) if side == "home" else (away_records, home_records)
+        )
+        selected_hits = sum(
+            Decimal(goals_for) + line > Decimal(goals_against)
+            for _, goals_for, goals_against in selected_records
+        )
+        opponent_line = -line
+        opponent_hits = sum(
+            Decimal(goals_for) + opponent_line > Decimal(goals_against)
+            for _, goals_for, goals_against in opponent_records
+        )
+        features.update({
+            "selected_spread_form_sample": len(selected_records),
+            "selected_spread_form_cover_count": selected_hits,
+            "selected_spread_form_rate": round(selected_hits / len(selected_records), 4),
+            "opponent_spread_form_sample": len(opponent_records),
+            "opponent_spread_form_cover_count": opponent_hits,
+            "opponent_spread_form_rate": round(opponent_hits / len(opponent_records), 4),
+        })
+    return features
+
 
 def _append_note(candidate: dict[str, Any], note: str, add_source: bool = True) -> None:
     existing = str(candidate.get("analysis_note", "")).strip()
@@ -622,21 +752,53 @@ def _football_enrich(
     standings_cache: dict[tuple[str, str], dict[str, Any] | None] = {}
     standings_calls = 0
     h2h_calls = 0
+    form_calls = 0
+    # Count attempted calls too, because provider-side errors may still consume
+    # quota even when the client cannot count a successful response.
+    core_requests_used = client.calls_used  # includes the successful schedule request
     enriched_count = 0
     h2h_cache: dict[tuple[str, str], dict[str, Any] | None] = {}
-    for index, provider_game in matches.items():
+    team_history_cache: dict[str, dict[str, Any] | None] = {}
+    working_features = {
+        index: dict(candidates[index].get("features") or {}) for index in matches
+    }
+    notes_by_index: dict[int, list[str]] = {index: [] for index in matches}
+
+    def enrichment_priority(item: tuple[int, dict[str, Any]]) -> tuple[int, int]:
+        index, _ = item
+        market = str(candidates[index].get("market_key", "")).lower()
+        if market in FOOTBALL_FORM_MARKETS:
+            priority = 0
+        elif market == "double_chance_1x":
+            priority = 1
+        elif market in FOOTBALL_H2H_MARKETS:
+            priority = 2
+        else:
+            priority = 3
+        return priority, index
+
+    ordered_matches = sorted(matches.items(), key=enrichment_priority)
+    # Hold room for up to 24 recent-team-form calls while reserving the rest for
+    # schedule, standings and H2H. At low account quota the reserve scales down.
+    form_reserve = min(
+        FOOTBALL_FORM_LIMIT,
+        max(0, ((client.call_budget - 1) // 3) * 2),
+    )
+    core_budget = max(1, client.call_budget - form_reserve)
+
+    for index, provider_game in ordered_matches:
         candidate = candidates[index]
         league_id = provider_game.get("league_id")
         season = provider_game.get("season")
         home_id, away_id = provider_game.get("home_id"), provider_game.get("away_id")
-        features = dict(candidate.get("features") or {})
-        notes: list[str] = []
+        features = working_features[index]
         market_key = str(candidate.get("market_key", "")).lower()
+
         if market_key == "double_chance_1x" and league_id and season and home_id and away_id:
             league_key = (str(league_id), str(season))
             if league_key not in standings_cache:
                 standings_cache[league_key] = None
-                if standings_calls < FOOTBALL_STANDINGS_LIMIT and client.calls_used < client.call_budget:
+                if standings_calls < FOOTBALL_STANDINGS_LIMIT and core_requests_used < core_budget:
                     standings_payload = _safe_get(
                         client,
                         "standings",
@@ -644,11 +806,12 @@ def _football_enrich(
                         warnings,
                     )
                     standings_calls += 1
+                    core_requests_used += 1
                     if standings_payload:
                         standings_cache[league_key] = standings_payload
             standings_payload = standings_cache.get(league_key)
             if standings_payload:
-                evidence = _standings_values(standings_payload, home_id, away_id)
+                evidence = _standings_values(standings_payload, str(home_id), str(away_id))
                 if evidence:
                     home_position, away_bottom, table_size, home_played, away_played = evidence
                     features["home_table_position"] = home_position
@@ -656,56 +819,175 @@ def _football_enrich(
                     features["league_table_size"] = table_size
                     features["home_league_matches"] = home_played
                     features["away_league_matches"] = away_played
-                    notes.append(
+                    notes_by_index[index].append(
                         f"API-Football standings: home rank {home_position}; "
                         f"away bottom-five={away_bottom} in {table_size}-team table "
                         f"({home_played}/{away_played} league matches played)."
                     )
 
-        if (
-            market_key in FOOTBALL_H2H_MARKETS
-            and home_id
-            and away_id
-            and h2h_calls < FOOTBALL_H2H_LIMIT
-        ):
-            pair_key = (str(home_id), str(away_id))
-            if pair_key not in h2h_cache:
-                h2h_cache[pair_key] = None
-                if client.calls_used < client.call_budget:
-                    h2h_payload = _safe_get(
-                        client,
-                        "fixtures/headtohead",
-                        {"h2h": f"{home_id}-{away_id}", "last": 5},
-                        warnings,
-                    )
-                    if h2h_payload:
-                        target_time, _ = _parse_time(
-                            candidate.get("match_time"), assume_timezone=timezone.utc
-                        )
-                        if target_time:
-                            h2h_cache[pair_key] = _football_h2h_evidence(
-                                h2h_payload, target_time, str(home_id), str(away_id)
-                            )
-                    h2h_calls += 1
-            h2h_result = h2h_cache.get(pair_key)
-            if h2h_result is not None:
-                features.update(h2h_result)
-                notes.append(
-                    "API-Football last five completed head-to-head matches: "
-                    f"1+/2+/3+ goals in {h2h_result['historical_over_0_5_count']}/"
-                    f"{h2h_result['historical_over_1_5_count']}/"
-                    f"{h2h_result['historical_over_2_5_count']}; "
-                    f"BTTS Yes in {h2h_result['historical_btts_yes_count']}/5; "
-                    f"upcoming-home wins/draws/away wins "
-                    f"{h2h_result.get('historical_home_win_count', 0)}/"
-                    f"{h2h_result.get('historical_draw_count', 0)}/"
-                    f"{h2h_result.get('historical_away_win_count', 0)} "
-                    f"from {h2h_result.get('historical_1x2_sample', 0)} team-ID-matched games."
+        if market_key not in FOOTBALL_H2H_MARKETS or not home_id or not away_id:
+            continue
+        pair_key = (str(home_id), str(away_id))
+        if pair_key not in h2h_cache:
+            if h2h_calls < FOOTBALL_H2H_LIMIT and core_requests_used < core_budget:
+                h2h_payload = _safe_get(
+                    client,
+                    "fixtures/headtohead",
+                    {"h2h": f"{home_id}-{away_id}", "last": 5},
+                    warnings,
                 )
-        if features != dict(candidate.get("features") or {}):
-            candidate["features"] = features
-            _append_note(candidate, " ".join(notes) if notes else "Football evidence enriched.")
-            enriched_count += 1
+                h2h_cache[pair_key] = h2h_payload
+                h2h_calls += 1
+                core_requests_used += 1
+        h2h_payload = h2h_cache.get(pair_key)
+        if not h2h_payload:
+            continue
+        target_time, _ = _parse_time(
+            candidate.get("match_time"), assume_timezone=timezone.utc
+        )
+        if not target_time:
+            continue
+        side = str(candidate.get("selection_side", "")).strip().lower()
+        selected_id = (
+            str(home_id) if side == "home"
+            else str(away_id) if side == "away"
+            else None
+        )
+        h2h_result = _football_h2h_evidence(
+            h2h_payload,
+            target_time,
+            str(home_id),
+            str(away_id),
+            selected_id,
+            candidate.get("market_point"),
+        )
+        if h2h_result is None:
+            continue
+        features.update(h2h_result)
+        notes_by_index[index].append(
+            "API-Football last five completed head-to-head matches: "
+            f"1+/2+/3+ goals in {h2h_result['historical_over_0_5_count']}/"
+            f"{h2h_result['historical_over_1_5_count']}/"
+            f"{h2h_result['historical_over_2_5_count']}; "
+            f"BTTS Yes in {h2h_result['historical_btts_yes_count']}/5; "
+            f"upcoming-home wins/draws/away wins "
+            f"{h2h_result.get('historical_home_win_count', 0)}/"
+            f"{h2h_result.get('historical_draw_count', 0)}/"
+            f"{h2h_result.get('historical_away_win_count', 0)} "
+            f"from {h2h_result.get('historical_1x2_sample', 0)} team-ID-matched games."
+        )
+        if market_key in FOOTBALL_SPREAD_MARKETS and "historical_spread_sample" in h2h_result:
+            notes_by_index[index].append(
+                f"At quoted two-way spread line {candidate.get('market_point')}: "
+                f"selected side covered {h2h_result['historical_spread_cover_count']}/"
+                f"{h2h_result['historical_spread_sample']} completed H2Hs."
+            )
+
+    # Totals and soccer spread picks also need recent scoreline trends for both
+    # teams. Team histories are cached by ID so several markets on the same game
+    # do not trigger duplicate provider calls.
+    form_limit = min(FOOTBALL_FORM_LIMIT, max(0, client.call_budget - core_requests_used))
+    for index, provider_game in ordered_matches:
+        candidate = candidates[index]
+        market_key = str(candidate.get("market_key", "")).lower()
+        if market_key not in FOOTBALL_FORM_MARKETS:
+            continue
+        features = working_features[index]
+        if market_key in FOOTBALL_TOTAL_MARKETS:
+            match = re.fullmatch(r"(over|under)_(0_5|1_5|2_5)_goals", market_key)
+            if not match:
+                continue
+            direction, line_tag = match.groups()
+            sample = _to_int(features.get("historical_total_goals_sample")) or 0
+            over_count = _to_int(features.get(f"historical_over_{line_tag}_count"))
+            if over_count is None:
+                continue
+            h2h_hits = over_count if direction == "over" else sample - over_count
+            if sample < 5 or h2h_hits < 4:
+                continue
+        else:
+            spread_sample = _to_int(features.get("historical_spread_sample")) or 0
+            spread_hits = _to_int(features.get("historical_spread_cover_count"))
+            if spread_sample < 5 or spread_hits is None or spread_hits < 4:
+                continue
+
+        target_time, _ = _parse_time(
+            candidate.get("match_time"), assume_timezone=timezone.utc
+        )
+        home_id, away_id = provider_game.get("home_id"), provider_game.get("away_id")
+        if not target_time or not home_id or not away_id:
+            continue
+        team_ids = list(dict.fromkeys((str(home_id), str(away_id))))
+        uncached_ids = [team_id for team_id in team_ids if team_id not in team_history_cache]
+        if form_calls + len(uncached_ids) > form_limit:
+            continue
+        if core_requests_used + form_calls + len(uncached_ids) > client.call_budget:
+            continue
+        for team_id in uncached_ids:
+            team_history_cache[team_id] = _safe_get(
+                client,
+                "fixtures",
+                {"team": team_id, "last": 5},
+                warnings,
+            )
+            form_calls += 1
+
+        home_payload = team_history_cache.get(str(home_id))
+        away_payload = team_history_cache.get(str(away_id))
+        if not home_payload or not away_payload:
+            continue
+        home_records = _football_team_form_records(home_payload, str(home_id), target_time)
+        away_records = _football_team_form_records(away_payload, str(away_id), target_time)
+        form_features = _football_form_features(
+            home_records,
+            away_records,
+            market_key,
+            candidate.get("market_point"),
+            candidate.get("selection_side"),
+        )
+        if not form_features:
+            continue
+        features.update(form_features)
+        home_over_rate = form_features.get("home_form_over_2_5_rate", 0.0)
+        away_over_rate = form_features.get("away_form_over_2_5_rate", 0.0)
+        notes_by_index[index].append(
+            "Recent team scorelines (last five completed before kickoff; API-Football, "
+            "all competitions): "
+            f"home {form_features['home_form_goals_for_average']:.2f} goals for/"
+            f"{form_features['home_form_goals_against_average']:.2f} against, "
+            f"Over 2.5 in {home_over_rate:.0%}; away "
+            f"{form_features['away_form_goals_for_average']:.2f} for/"
+            f"{form_features['away_form_goals_against_average']:.2f} against, "
+            f"Over 2.5 in {away_over_rate:.0%}."
+        )
+        if market_key in FOOTBALL_SPREAD_MARKETS:
+            notes_by_index[index].append(
+                f"Recent five-game spread form at line {candidate.get('market_point')}: "
+                f"selected cover {form_features.get('selected_spread_form_cover_count', 0)}/5; "
+                f"opponent cover {form_features.get('opponent_spread_form_cover_count', 0)}/5."
+            )
+        else:
+            line_home_over_rate = form_features.get(f"home_form_over_{line_tag}_rate", 0.0)
+            line_away_over_rate = form_features.get(f"away_form_over_{line_tag}_rate", 0.0)
+            home_selected_rate = (
+                line_home_over_rate if direction == "over" else 1.0 - line_home_over_rate
+            )
+            away_selected_rate = (
+                line_away_over_rate if direction == "over" else 1.0 - line_away_over_rate
+            )
+            notes_by_index[index].append(
+                f"For the quoted {direction} {line_tag.replace('_', '.')} totals line, "
+                f"recent hit rates were home {home_selected_rate:.0%} and "
+                f"away {away_selected_rate:.0%}."
+            )
+
+    for index, features in working_features.items():
+        if features == dict(candidates[index].get("features") or {}):
+            continue
+        candidates[index]["features"] = features
+        note = " ".join(notes_by_index[index]) or "Football evidence enriched."
+        _append_note(candidates[index], note)
+        enriched_count += 1
     return client.calls_used, enriched_count, client.remaining_estimate
 
 
@@ -962,8 +1244,31 @@ def _result_outcome(row: dict[str, Any], sport: str) -> str | None:
             return "win" if home_goals == away_goals else "loss"
         if market == "away_win_1x2":
             return "win" if away_goals > home_goals else "loss"
-        if market == "double_chance_1x": 
+        if market == "double_chance_1x":
             return "win" if home_goals >= away_goals else "loss"
+        if market in FOOTBALL_SPREAD_MARKETS:
+            try:
+                point = Decimal(str(row.get("market_point")))
+            except (InvalidOperation, TypeError, ValueError):
+                return None
+            side = str(row.get("selection_side", "")).strip().lower()
+            expected_side = "home" if market == "football_home_spread" else "away"
+            if (
+                side != expected_side
+                or not point.is_finite()
+                or abs(point) > Decimal("5")
+                or point * 2 != (point * 2).to_integral_value()
+            ):
+                return None
+            if side == "home":
+                adjusted = Decimal(home_goals) + point
+                opponent = Decimal(away_goals)
+            else:
+                adjusted = Decimal(away_goals) + point
+                opponent = Decimal(home_goals)
+            if adjusted == opponent:
+                return "void"
+            return "win" if adjusted > opponent else "loss"
         if market in {"btts_yes", "btts_no"}:
             both_scored = home_goals > 0 and away_goals > 0
             won = both_scored if market == "btts_yes" else not both_scored

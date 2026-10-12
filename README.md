@@ -1,12 +1,12 @@
 # Kimathy Daily Analysis
 
-Private, on-demand sports analysis dashboard and accumulator pipeline, with a server-enforced limit of one manual request per rolling 24 hours. The goal is to **aim for at least 20 winning accumulators in a month**, not merely to issue 20 tickets. That win count cannot be guaranteed. The system may publish no ticket when fixtures, usable odds or market-specific evidence are insufficient. Each ticket targets combined decimal odds of 1.50 to below 1.90.
+Private, on-demand sports analysis dashboard and accumulator pipeline, with a server-enforced limit of one manual request per Tanzania calendar day (Africa/Dar_es_Salaam). The goal is to **aim for at least 20 winning accumulators in a month**, not merely to issue 20 tickets. That win count cannot be guaranteed. The system may publish no ticket when fixtures, usable odds or market-specific evidence are insufficient. Each ticket targets combined decimal odds of 1.50 to below 1.90.
 
 ## Current build
 
 - Responsive private web dashboard with Supabase email/password sign-in; no public sign-up or demo-pick fallback is built into the app.
 - GitHub Actions is manual-only (`workflow_dispatch`); no schedule is configured. The private app's **Run analysis now** button sends the explicit request to GitHub Actions. Opening the app or refreshing its saved dashboard data does not call the sports-data providers.
-- The app, Edge Function, and pipeline share a durable Supabase cooldown. One request is accepted per rolling 24 hours; direct GitHub manual runs are also stopped before provider calls if the cooldown is active.
+- The app, Edge Function, and pipeline share a durable Supabase guard. One request is accepted per Tanzania calendar day (EAT); it resets at local midnight, so runs just before and after midnight can be less than 24 hours apart (up to 44 Odds API credits across those two runs, with the existing 22-credit cap per run). Direct GitHub manual runs are also stopped before provider calls if today's limit is active.
 - The Odds API supplies odds. API-Sports supplies football/basketball statistics and can settle past fixtures from final scores.
 - A read-only RSS layer checks recent football/basketball news and previews from BBC Sport and ESPN. It adds attributed headlines/links and cautious keyword tags to the fixture note only; it never passes an evidence gate, changes ranking, or fetches article pages.
 - Football markets: exact-line totals (0.5, 1.5, 2.5), BTTS Yes/No, directly quoted home-or-draw double chance, direct 1X2 home win/draw/away win when supported by H2H, and **two-way soccer spreads**. The connected Odds API market is not a European 3-way handicap, so every spread is explicitly labelled two-way; unsupported/ambiguous line types are skipped.
@@ -15,6 +15,9 @@ Private, on-demand sports analysis dashboard and accumulator pipeline, with a se
 - Tennis odds are paused until a permitted rankings/surface/form source is integrated. Corners, cards, cricket, and unsupported markets are not selected.
 - At most one selection from a given game can enter a ticket, avoiding stacked correlated markets from the same event.
 - Analysis scores are ranking heuristics, **not win probabilities**. The system does not place bets or guarantee returns.
+- The private dashboard also has a Capacitor Android Studio wrapper. See `README_ANDROID.md` for Windows setup/build steps; the complete-repository ZIP includes the manual-only `.github/workflows/daily-analysis.yml` workflow and contains no secret values. Keep the repository private.
+
+For a clean replacement of the tracked repository files, use `UPLOAD-TO-GITHUB.md`; that archive includes the workflow but excludes credentials, dependencies, and generated build output.
 
 ## One-time Supabase setup for an existing project
 
@@ -24,10 +27,10 @@ The browser tables were previously public read-only. This build changes them to 
 2. In **Authentication → Users**, create your app login account. This is separate from signing in to the Supabase admin dashboard.
 3. In Supabase Auth settings, turn off public sign-ups. The allowlist is the main database protection; disabling sign-ups is extra protection.
 4. Open `supabase/authorize-owner-template.sql`, replace the sample email with the exact app-login email, and run it in SQL Editor. It should report one authorized owner.
-5. Run `supabase/migration_manual_run_guard.sql` in SQL Editor after `migration_private_dashboard.sql`. It creates the private, atomic rolling 24-hour request limit.
+5. Run `supabase/migration_manual_run_guard.sql` in SQL Editor after `migration_private_dashboard.sql`. It creates or updates the private, atomic one-request-per-calendar-day guard using Africa/Dar_es_Salaam. For an existing installation, re-run this updated file to replace the old rolling 24-hour functions.
 6. In Supabase **Edge Functions → Deploy a new function → Via Editor**, create `trigger-analysis`, paste the contents of `supabase/functions/trigger-analysis/index.ts`, and deploy with JWT verification enabled. This server-side function checks the signed-in allowlisted user and dispatches the manual GitHub workflow.
 7. Create a GitHub fine-grained personal access token limited to `swalehkimathy-ux/kimathy-daily-analysis` with **Actions: Read and write**. Save it only in Supabase **Edge Function Secrets** as `KIMATHY_GITHUB_TOKEN`; never put it in the web app, GitHub repository, or chat.
-8. Open the hosted app and sign in. The button stays disabled until the cooldown status is available. Clicking it explicitly requests a run; a confirmation explains the possible API usage.
+8. Open the hosted app and sign in. The button stays disabled until the secure daily-limit status is available. Clicking it explicitly requests a run; a confirmation explains API usage and the midnight reset.
 
 The SQL migrations remove anonymous reads and any older broad policies. Until the owner is allowlisted, the browser receives no analysis rows. Do not place API keys or the Supabase service-role key in `config.js` or in the HTML. The `sb_publishable_...` browser key identifies the project; Row Level Security protects the data. The Edge Function's GitHub token and Supabase admin key stay server-side.
 
@@ -43,6 +46,10 @@ The GitHub Actions workflow keeps using the existing server-side secrets:
 - `SUPABASE_SERVICE_ROLE_KEY`
 
 The app button also needs a repository-limited GitHub fine-grained token stored only in Supabase Edge Function Secrets under `KIMATHY_GITHUB_TOKEN` (Actions: Read and write). It is not an API provider key and does not belong in GitHub repository files, `config.js`, or chat. Never paste any key value into chat. Keep the repository private and do not expose private personal information in the analysis tables.
+
+### GitHub dispatch troubleshooting
+
+An active GitHub token is not necessarily authorized for this dispatch. Check that the fine-grained token includes the private repository `swalehkimathy-ux/kimathy-daily-analysis`, has repository permission **Actions: Read and write**, and is saved in Supabase Edge Function Secrets as `KIMATHY_GITHUB_TOKEN`. Also verify that `.github/workflows/daily-analysis.yml` is enabled on `main` and includes `workflow_dispatch`. The private app now shows only GitHub's HTTP status code on a rejection; it does not expose the response body or any token. Common clues: 401 authentication, 403 permission/policy, 404 inaccessible or wrong repository/workflow, and 422 invalid workflow/ref/input.
 
 ## Odds quota and coverage
 

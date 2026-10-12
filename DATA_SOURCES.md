@@ -1,6 +1,6 @@
 # Chanzo cha data kinachofaa kwa Kimathy
 
-**Imesasishwa: 11 Oktoba 2026.** App haina ratiba ya automatic: run huanzishwa kwa kubonyeza kitufe, na ombi moja tu huruhusiwa ndani ya kila rolling saa 24. Lengo ni **angalau accumulators 20 zilizoshinda kwa mwezi**, si tiketi 20 tu zilizotolewa; hili ni lengo tu, si ahadi. Run inaweza kutoa hakuna ticket ikiwa odds au ushahidi wa takwimu hautoshi—hakuna pick inayolazimishwa. Ticket moja inalenga odds jumla **1.50 hadi chini ya 1.90**.
+**Imesasishwa: 11 Oktoba 2026.** App haina ratiba ya automatic: run huanzishwa kwa kubonyeza kitufe, na ombi moja tu huruhusiwa kwa tarehe ya Tanzania (Africa/Dar_es_Salaam), likifunguka upya saa 00:00; maombi yaliyo karibu na usiku wa manane yanaweza kuwa chini ya saa 24 tofauti. Lengo ni **angalau accumulators 20 zilizoshinda kwa mwezi**, si tiketi 20 tu zilizotolewa; hili ni lengo tu, si ahadi. Run inaweza kutoa hakuna ticket ikiwa odds au ushahidi wa takwimu hautoshi—hakuna pick inayolazimishwa. Ticket moja inalenga odds jumla **1.50 hadi chini ya 1.90**.
 
 ## Chanzo cha odds na stats
 

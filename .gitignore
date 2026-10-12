@@ -3,4 +3,10 @@
 !.env.example
 __pycache__/
 *.py[cod]
+node_modules/
+www/
+android/.gradle/
+android/local.properties
+android/.idea/
+android/**/build/
 .DS_Store

@@ -57,25 +57,25 @@ def supabase_get(base: str, table: str, params: list[tuple[str, str]], headers: 
 
 
 def claim_manual_analysis_window(base: str, headers: dict[str, str]) -> bool:
-    """Atomically enforce one server-side analysis start per rolling 24 hours."""
+    """Atomically enforce one server-side analysis start per Tanzania calendar day."""
     response = requests.post(
         f"{base}/rpc/kimathy_claim_manual_run",
         headers=headers,
         json={},
         timeout=TIMEOUT,
     )
-    request_ok(response, "Manual analysis cooldown check")
+    request_ok(response, "Manual analysis daily-limit check")
     payload = response.json()
     if not isinstance(payload, dict) or not isinstance(payload.get("allowed"), bool):
-        fail("Manual analysis cooldown returned an unexpected response; no sports API requests were made.")
+        fail("Manual analysis daily limit returned an unexpected response; no sports API requests were made.")
     if not payload["allowed"]:
-        next_allowed = payload.get("next_allowed_at") or "after the current cooldown"
+        next_allowed = payload.get("next_allowed_at") or "after the next EAT midnight"
         print(
-            "Manual analysis blocked by the 24-hour cooldown; no Odds API/API-Sports "
+            "Manual analysis blocked: one request per Tanzania calendar day (EAT); no Odds API/API-Sports "
             f"requests were made. Try again after {next_allowed}."
         )
         return False
-    next_allowed = payload.get("next_allowed_at") or "24 hours from now"
+    next_allowed = payload.get("next_allowed_at") or "after the next EAT midnight"
     print(f"Manual analysis window claimed; next request is allowed after {next_allowed}.")
     return True
 
@@ -299,7 +299,7 @@ def main() -> int:
     base = f"{supabase_url}/rest/v1"
     headers = supabase_headers(service_key)
 
-    # Claim first so even result-enrichment calls are covered by the rolling cap.
+    # Claim first so even result-enrichment calls are covered by the per-calendar-day limit.
     if not claim_manual_analysis_window(base, headers):
         return 0
 

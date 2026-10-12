@@ -133,23 +133,23 @@ Deno.serve(async (request: Request): Promise<Response> => {
     return jsonResponse(403, { error: "This account is not authorized to request analysis." });
   }
 
-  // The SQL function locks a single row and records the cooldown before GitHub
-  // is contacted, so two browser requests cannot race past the 24-hour limit.
+  // The SQL function locks a single row and records today's request before GitHub
+  // is contacted, so two browser requests cannot race past the calendar-day limit.
   let reservation: { ok: boolean; status: number; data: unknown };
   try {
     reservation = await serviceRpc(supabaseUrl, serviceKey, "kimathy_reserve_manual_run");
   } catch {
-    return jsonResponse(503, { error: "Could not check the 24-hour request limit." });
+    return jsonResponse(503, { error: "Could not check today's request limit." });
   }
   if (!reservation.ok || !reservation.data || typeof reservation.data !== "object") {
-    return jsonResponse(503, { error: "Could not check the 24-hour request limit." });
+    return jsonResponse(503, { error: "Could not check today's request limit." });
   }
   const reserveData = reservation.data as Record<string, unknown>;
   if (reserveData.allowed !== true) {
     return jsonResponse(429, {
       error: reserveData.reason === "request_pending"
         ? "An analysis request is already being sent. Please wait a few minutes."
-        : "Only one analysis request is allowed in each rolling 24-hour period.",
+        : "Only one analysis request is allowed per Tanzania calendar day (EAT).",
       reason: reserveData.reason || "cooldown",
       next_allowed_at: reserveData.next_allowed_at || null,
     });
@@ -182,21 +182,25 @@ Deno.serve(async (request: Request): Promise<Response> => {
     // A transport failure may happen after GitHub accepted the dispatch. Keep
     // the cooldown rather than risk a duplicate run.
     return jsonResponse(502, {
-      error: "GitHub did not confirm the request. To prevent duplicate runs, the 24-hour limit remains in effect.",
+      error: "GitHub did not confirm the request. To prevent a duplicate run, today's request reservation remains in effect.",
       next_allowed_at: reserveData.next_allowed_at || null,
     });
   }
 
   if (githubResponse.status !== 204) {
+    // The HTTP code is safe to surface; never log or return GitHub response
+    // bodies, which may contain unnecessary repository/workflow diagnostics.
+    console.warn("GitHub workflow dispatch response", { status: githubResponse.status });
     // A clear 4xx rejection means GitHub did not dispatch a run; undo only our
-    // own reservation. Keep the cooldown on 5xx because acceptance is uncertain.
+    // own reservation. Keep it on 5xx because acceptance is uncertain.
     if (githubResponse.status < 500) {
       await releaseReservation(supabaseUrl, serviceKey, reservationId);
     }
     return jsonResponse(502, {
       error: githubResponse.status < 500
-        ? "GitHub rejected the secure dispatch. The request limit was released; check the GitHub workflow setup."
-        : "GitHub could not confirm the dispatch. To prevent duplicate runs, the 24-hour limit remains in effect.",
+        ? `GitHub rejected the secure dispatch (HTTP ${githubResponse.status}). The request limit was released; check the token's repository Actions permission and workflow setup.`
+        : `GitHub could not confirm the dispatch (HTTP ${githubResponse.status}). To prevent a duplicate run, today's request reservation remains in effect.`,
+      github_status: githubResponse.status,
       next_allowed_at: githubResponse.status < 500 ? null : reserveData.next_allowed_at || null,
     });
   }

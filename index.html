@@ -573,7 +573,7 @@
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M13.5 2.8 5.8 13h5l-.3 8.2 7.7-10.5h-5l.3-7.9Z" stroke-linecap="round" stroke-linejoin="round"/></svg>
                 <span id="analysis-trigger-label">Checking request limit…</span>
               </button>
-              <span class="run-status" id="analysis-trigger-status" role="status" aria-live="polite">Sign in to check the 24-hour limit.</span>
+              <span class="run-status" id="analysis-trigger-status" role="status" aria-live="polite">Sign in to check today's request limit.</span>
             </div>
             <button class="button ghost hide-mobile" id="export-button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 17v3h14v-3" stroke-linecap="round" stroke-linejoin="round"/></svg>Export fixtures</button>
           </div>
@@ -883,7 +883,7 @@
       }
       function formatTriggerTime(value) {
         const date = new Date(value);
-        if (Number.isNaN(date.getTime())) return 'in 24 hours';
+        if (Number.isNaN(date.getTime())) return 'after the next EAT midnight';
         const label = new Intl.DateTimeFormat('en-GB', {
           timeZone: TZ, day: 'numeric', month: 'short', year: 'numeric',
           hour: '2-digit', minute: '2-digit', hourCycle: 'h23'
@@ -904,7 +904,7 @@
         }
         if (state.triggerPending) {
           label.textContent = 'Sending request…';
-          status.textContent = 'Checking the 24-hour limit and starting one manual run.';
+          status.textContent = "Checking today's request limit and starting one manual run.";
           return;
         }
         const runStatus = state.manualRunStatus;
@@ -917,11 +917,11 @@
         label.textContent = 'Run analysis now';
         if (runStatus.allowed) {
           button.disabled = false;
-          status.textContent = 'One request per rolling 24 hours · up to 22 Odds API market credits. No pick is guaranteed.';
+          status.textContent = 'One request per Tanzania calendar day (EAT) · up to 22 Odds API market credits per run. No pick is guaranteed.';
         } else if (runStatus.reason === 'request_pending') {
           status.textContent = `A request is already being sent. Check again after ${formatTriggerTime(runStatus.next_allowed_at)}.`;
         } else if (runStatus.reason === 'cooldown') {
-          status.textContent = `Next manual request after ${formatTriggerTime(runStatus.next_allowed_at)}. Limit: once per rolling 24 hours.`;
+          status.textContent = `Next manual request available ${formatTriggerTime(runStatus.next_allowed_at)}. Limit: one per calendar day (EAT).`;
         } else {
           status.textContent = 'Secure request-limit status unavailable; manual trigger is disabled.';
           status.classList.add('error');
@@ -954,7 +954,7 @@
         } catch {
           state.manualRunStatus = { allowed: false, reason: 'unavailable' };
           if (!preserveNotice) {
-            state.triggerNotice = 'Complete the secure cooldown setup before using the manual trigger.';
+            state.triggerNotice = 'Complete the secure daily-request setup before using the manual trigger.';
             state.triggerNoticeType = 'error';
           }
         }
@@ -963,7 +963,7 @@
       async function requestManualAnalysis() {
         if (!state.manualRunStatus?.allowed || state.triggerPending) return;
         const confirmed = window.confirm(
-          'Start one live manual analysis run? It is capped at up to 22 Odds API market credits, and API-Sports may use its separate statistics quota. Evidence rules stay strict; no qualified pick is guaranteed.'
+          'Start one live manual analysis run? The limit is one request per Tanzania calendar day (EAT) and resets at midnight, so requests on either side of midnight can be less than 24 hours apart and may use up to 44 Odds API market credits across the two runs. Each run remains capped at 22 credits; API-Sports may use a separate quota. Evidence rules stay strict; no qualified pick is guaranteed.'
         );
         if (!confirmed) return;
         state.triggerPending = true;

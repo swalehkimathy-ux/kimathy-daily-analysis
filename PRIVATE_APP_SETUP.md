@@ -4,16 +4,19 @@ Mabadiliko ya app yameandaliwa. Hatua zinazobadilisha akaunti lazima uzifanye nd
 
 ## Kazi ya mara moja: Supabase
 
-1. Fungua project yako ya Supabase → **SQL Editor → New query**. Kama `migration_private_dashboard.sql` haikuendeshwa bado, iendeshe kwanza. Kama ilishaendeshwa, usiirudie bila sababu.
-2. Fungua faili `supabase/migration_manual_run_guard.sql` kutoka kifurushi kipya, nakili SQL yote na uiendeshe baada ya migration ya private dashboard. Hii huweka kikomo cha seva: ombi moja kwa kila saa 24 zinazozunguka.
+1. Fungua project yako ya Supabase → **SQL Editor → New query**. Kama `migration_private_dashboard.sql` haikuendeshwa bado, iendeshe kwanza. Kama ilishaendeshwa, endelea na guard mpya iliyoelezwa hapa chini.
+2. Fungua faili `supabase/migration_manual_run_guard.sql` kutoka kifurushi kipya, nakili SQL yote na uiendeshe baada ya migration ya private dashboard. Hii huweka/hu-update kikomo cha seva: ombi moja kwa tarehe ya Tanzania (EAT), kikifunguka upya saa 00:00. Kwa hiyo run kabla na baada ya usiku wa manane inaweza kuwa chini ya saa 24 tofauti na kutumia hadi credits 44 kwa jumla katika run hizo mbili (kikomo cha credits 22 kwa kila run kinabaki).
 3. Hakikisha una Supabase Auth user wa kuingia kwenye app na umeidhinisha email yake kwa SQL ya allowlist. Usajili wa umma uzimwe.
 
-## Kuweka app/pipeline code GitHub bila terminal
+## Kubadilisha files za repo kwa kifurushi kipya
 
-1. Pakua na fungua `kimathy-daily-analysis.zip` kwenye kompyuta.
-2. Fungua GitHub Desktop, clone repository yako iliyopo `swalehkimathy-ux/kimathy-daily-analysis` (ikiwa tayari ume-clone, tumia folder hilo).
-3. Nakili files/folders zilizo ndani ya ZIP na uzibandike kwenye folder la repo; ruhusu kubadilisha files za zamani. ZIP haijumuishi `.github`, kwa makusudi—**usiifute wala ku-upload tena `.github` iliyopo**.
-4. GitHub Desktop: kagua mabadiliko, andika ujumbe mfupi kama `Add manual app trigger`, bonyeza **Commit to main**, kisha **Push origin**. Workflow iliyopo `daily-analysis.yml` ibaki kama ilivyo; ni manual-only.
+Tumia `kimathy-daily-analysis-full-repo.zip`. Ina code yote ya repo pamoja na `.github/workflows/daily-analysis.yml`, lakini haina `node_modules`, build files, `.git`, wala siri/API keys.
+
+1. Pakua na extract ZIP kwenye folder tofauti.
+2. Fungua GitHub Desktop, clone repo ya sasa `swalehkimathy-ux/kimathy-daily-analysis` (au tumia clone uliopo), kisha chagua **Show in Explorer**.
+3. Fanya backup ya folder la clone. Ndani ya clone, onyesha hidden files kisha futa files/folders za zamani **isipokuwa `.git`**. Usifute repository yenyewe wala kubadili Private/settings.
+4. Nakili yaliyomo ndani ya folder ulilo-extract kwenda kwenye clone. Hakikisha `.github/workflows/daily-analysis.yml` imenakiliwa pia. ZIP haina token au provider keys; GitHub Actions secrets zilizohifadhiwa kwenye settings ya repo zitabaki kwa sababu repo haijafutwa.
+5. GitHub Desktop: kagua mabadiliko, commit kwa `main`, kisha **Push origin**. Repo ibaki **Private**.
 
 ## Kuwezesha kitufe cha app
 
@@ -23,13 +26,15 @@ Baada ya code kusukumwa GitHub:
 2. GitHub → **Settings → Developer settings → Personal access tokens → Fine-grained tokens**. Tengeneza token inayoruhusiwa kwa repository moja tu: `swalehkimathy-ux/kimathy-daily-analysis`. Ruhusa inayohitajika ni **Repository permissions → Actions → Read and write**. Weka muda mfupi wa expiry unaokufaa.
 3. Nakili token hiyo mara moja na uiweke Supabase → **Edge Functions → Secrets** kwa jina `KIMATHY_GITHUB_TOKEN`. Thamani hiyo hubaki Supabase server-side; usiiweke kwenye `config.js`, faili la app, GitHub Actions secrets, au chat. Baada ya kuihifadhi, usiitumie tena kwenye ujumbe.
 
-Kitufe cha **Run analysis now** kitaonekana baada ya kuingia. Kufungua app au kubonyeza refresh ya data husoma tu Supabase; havianzishi The Odds API/API-Sports. Kubonyeza kitufe na kuthibitisha ndipo huomba GitHub Actions ianze run. Kikomo cha saa 24 kinawekwa Supabase, si JavaScript ya browser, na pipeline hukagua tena kabla ya kuita data providers. Run inaweza kutumia hadi takriban 22 market credits za The Odds API (header za provider ndizo za mwisho); API-Sports inaweza kutumia quota yake tofauti. Vigezo vya ushahidi havipunguzwi na app haitalazimisha pick.
+Kumbuka: token kuonekana **active** kunamaanisha haija-expire/kufutwa tu; hakuthibitishi ruhusa. Lazima iwe na access ya repository hiyo na **Actions: Read and write**, na workflow `daily-analysis.yml` iwe enabled kwenye `main` ikiwa na `workflow_dispatch`. Ujumbe wa app sasa utaonyesha namba ya HTTP pekee (bila response body/token) ili tujue kama ni 401, 403, 404 au 422. Usinitumie token yenyewe.
+
+Kitufe cha **Run analysis now** kitaonekana baada ya kuingia. Kufungua app au kubonyeza refresh ya data husoma tu Supabase; havianzishi The Odds API/API-Sports. Kubonyeza kitufe na kuthibitisha ndipo huomba GitHub Actions ianze run. Kikomo cha ombi moja kwa tarehe ya Tanzania kinawekwa Supabase, si JavaScript ya browser, na pipeline hukagua tena kabla ya kuita data providers. Run inaweza kutumia hadi takriban 22 market credits za The Odds API (header za provider ndizo za mwisho); API-Sports inaweza kutumia quota yake tofauti. Vigezo vya ushahidi havipunguzwi na app haitalazimisha pick.
 
 ## Hosting na uthibitisho
 
-App inahitaji static HTTPS host ili ifunguke kwenye simu/kompyuta nje ya local machine. Baada ya Push origin, host yako inaweza kuchukua `index.html`/`config.js` mpya. Ingia kwa Supabase email/password. Kitufe kitabaki kimezimwa ikiwa SQL guard, Edge Function, au cooldown status haijasanidiwa kikamilifu—hiyo ni salama.
+App inahitaji static HTTPS host ili ifunguke kwenye simu/kompyuta nje ya local machine. Baada ya Push origin, host yako inaweza kuchukua `index.html`/`config.js` mpya. Ingia kwa Supabase email/password. Kitufe kitabaki kimezimwa ikiwa SQL guard, Edge Function, au daily-limit status haijasanidiwa kikamilifu—hiyo ni salama.
 
-Ukiwa unataka kujaribu, tumia **Run analysis now** ndani ya app na uangalie GitHub → **Actions** kwa workflow `Kimathy manual analysis`. Run za moja kwa moja kutoka GitHub pia hukaguliwa na cooldown ya server. Chagua `confirm_requests=true` tu pale unapoanzisha mwenyewe; default yake inabaki `false`.
+Ukiwa unataka kujaribu, tumia **Run analysis now** ndani ya app na uangalie GitHub → **Actions** kwa workflow `Kimathy manual analysis`. Run za moja kwa moja kutoka GitHub pia hukaguliwa na guard ya siku ya kalenda (EAT). Chagua `confirm_requests=true` tu pale unapoanzisha mwenyewe; default yake inabaki `false`.
 
 ## Usalama
 

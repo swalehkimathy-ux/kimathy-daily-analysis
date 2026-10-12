@@ -1,7 +1,7 @@
--- Kimathy: secure manual-only trigger with an atomic rolling 24-hour cooldown.
--- Run once in Supabase SQL Editor after migration_private_dashboard.sql.
+-- Kimathy: secure manual-only trigger with an atomic once-per-calendar-day limit (Africa/Dar_es_Salaam).
+-- Run or re-run safely in Supabase SQL Editor after migration_private_dashboard.sql.
 -- The browser can only read status or invoke the Edge Function; the service role
--- reserves/claims the cooldown before any sports-provider API request.
+-- reserves/claims the daily request before any sports-provider API request.
 
 create extension if not exists pgcrypto;
 
@@ -57,12 +57,13 @@ begin
    for update;
 
   if v_last_requested is not null
-     and v_now < v_last_requested + interval '24 hours' then
+     and (v_last_requested at time zone 'Africa/Dar_es_Salaam')::date
+         = (v_now at time zone 'Africa/Dar_es_Salaam')::date then
     return jsonb_build_object(
       'allowed', false,
       'reason', 'cooldown',
       'last_requested_at', v_last_requested,
-      'next_allowed_at', v_last_requested + interval '24 hours'
+      'next_allowed_at', (((v_last_requested at time zone 'Africa/Dar_es_Salaam')::date + 1)::timestamp at time zone 'Africa/Dar_es_Salaam')
     );
   end if;
 
@@ -86,7 +87,7 @@ begin
     'reservation_id', v_reservation,
     'reserved_at', v_now,
     'reservation_expires_at', v_now + interval '15 minutes',
-    'next_allowed_at', v_now + interval '24 hours'
+    'next_allowed_at', (((v_now at time zone 'Africa/Dar_es_Salaam')::date + 1)::timestamp at time zone 'Africa/Dar_es_Salaam')
   );
 end;
 $$;
@@ -138,7 +139,7 @@ begin
    for update;
 
   -- The app's short-lived reservation authorizes exactly one workflow to pass
-  -- even though it has already recorded the 24-hour cooldown at request time.
+  -- even though it has already recorded the calendar-day limit at request time.
   if v_reserved is not null and v_now < v_reserved + interval '15 minutes' then
     update public.kimathy_manual_run_guard
        set last_started_at = v_now,
@@ -150,7 +151,7 @@ begin
     return jsonb_build_object(
       'allowed', true,
       'last_started_at', v_now,
-      'next_allowed_at', v_last_requested + interval '24 hours'
+      'next_allowed_at', (((v_last_requested at time zone 'Africa/Dar_es_Salaam')::date + 1)::timestamp at time zone 'Africa/Dar_es_Salaam')
     );
   end if;
 
@@ -163,12 +164,13 @@ begin
   end if;
 
   if v_last_requested is not null
-     and v_now < v_last_requested + interval '24 hours' then
+     and (v_last_requested at time zone 'Africa/Dar_es_Salaam')::date
+         = (v_now at time zone 'Africa/Dar_es_Salaam')::date then
     return jsonb_build_object(
       'allowed', false,
       'reason', 'cooldown',
       'last_requested_at', v_last_requested,
-      'next_allowed_at', v_last_requested + interval '24 hours'
+      'next_allowed_at', (((v_last_requested at time zone 'Africa/Dar_es_Salaam')::date + 1)::timestamp at time zone 'Africa/Dar_es_Salaam')
     );
   end if;
 
@@ -184,7 +186,7 @@ begin
   return jsonb_build_object(
     'allowed', true,
     'last_started_at', v_now,
-    'next_allowed_at', v_now + interval '24 hours'
+    'next_allowed_at', (((v_now at time zone 'Africa/Dar_es_Salaam')::date + 1)::timestamp at time zone 'Africa/Dar_es_Salaam')
   );
 end;
 $$;
@@ -210,12 +212,13 @@ begin
    where guard_id = 1;
 
   if v_last_requested is not null
-     and v_now < v_last_requested + interval '24 hours' then
+     and (v_last_requested at time zone 'Africa/Dar_es_Salaam')::date
+         = (v_now at time zone 'Africa/Dar_es_Salaam')::date then
     return jsonb_build_object(
       'allowed', false,
       'reason', 'cooldown',
       'last_requested_at', v_last_requested,
-      'next_allowed_at', v_last_requested + interval '24 hours'
+      'next_allowed_at', (((v_last_requested at time zone 'Africa/Dar_es_Salaam')::date + 1)::timestamp at time zone 'Africa/Dar_es_Salaam')
     );
   end if;
 
@@ -244,4 +247,4 @@ grant execute on function public.kimathy_release_manual_run(uuid) to service_rol
 grant execute on function public.kimathy_claim_manual_run() to service_role;
 grant execute on function public.kimathy_manual_run_status() to authenticated;
 
-comment on table public.kimathy_manual_run_guard is 'Atomic cooldown for at most one manual sports-analysis trigger per rolling 24 hours.';
+comment on table public.kimathy_manual_run_guard is 'Atomic guard for at most one manual sports-analysis trigger per Africa/Dar_es_Salaam calendar day.';

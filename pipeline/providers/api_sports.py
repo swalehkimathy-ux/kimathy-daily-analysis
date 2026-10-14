@@ -13,7 +13,7 @@ from __future__ import annotations
 import re
 import unicodedata
 from dataclasses import dataclass, field
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from difflib import SequenceMatcher
 from typing import Any
@@ -43,6 +43,13 @@ FOOTBALL_H2H_MARKETS = {
 }
 MIN_STANDINGS_MATCHES = 5
 MIN_STANDINGS_TEAMS = 10
+
+# Verified provider display-name variant observed in the live fixture join log.
+# Canonicalize only this explicit alias; do not relax the 0.86 fuzzy threshold.
+TEAM_NAME_ALIASES = {
+    "lask": "lask linz",
+    "lask linz": "lask linz",
+}
 
 FINAL_FOOTBALL_STATUSES = {"ft", "aet", "pen", "awd", "wo", "finished", "final"}
 FINAL_BASKETBALL_STATUSES = {"ft", "aot", "finished", "final", "completed", "3"}
@@ -302,7 +309,8 @@ def _name_key(value: Any) -> str:
     text = "".join(char for char in text if not unicodedata.combining(char))
     text = re.sub(r"[^a-z0-9]+", " ", text.lower())
     ignored = {"fc", "cf", "sc", "afc", "club", "basketball", "bc"}
-    return " ".join(token for token in text.split() if token not in ignored)
+    normalized = " ".join(token for token in text.split() if token not in ignored)
+    return TEAM_NAME_ALIASES.get(normalized, normalized)
 
 
 def _name_similarity(first: Any, second: Any) -> float:
@@ -998,7 +1006,10 @@ def _football_enrich(
                 h2h_payload = _safe_get(
                     client,
                     "fixtures/headtohead",
-                    {"h2h": f"{home_id}-{away_id}", "last": 5},
+                    # Free API-Sports plans reject the `last` filter. Retrieve the
+                    # provider-allowed H2H set and keep the most recent five locally
+                    # in _football_h2h_evidence, strictly before kickoff.
+                    {"h2h": f"{home_id}-{away_id}"},
                     warnings,
                 )
                 h2h_cache[pair_key] = h2h_payload
@@ -1089,10 +1100,19 @@ def _football_enrich(
         if core_requests_used + form_calls + len(uncached_ids) > client.call_budget:
             continue
         for team_id in uncached_ids:
+            form_end_day = target_time.astimezone(EAT).date()
+            form_start_day = form_end_day - timedelta(days=365)
+            # The Free plan rejects the `last` filter. Use its date-window filters
+            # to bound volume, then select the latest five completed scorelines locally.
             team_history_cache[team_id] = _safe_get(
                 client,
                 "fixtures",
-                {"team": team_id, "last": 5},
+                {
+                    "team": team_id,
+                    "from": form_start_day.isoformat(),
+                    "to": form_end_day.isoformat(),
+                    "timezone": "Africa/Dar_es_Salaam",
+                },
                 warnings,
             )
             form_calls += 1

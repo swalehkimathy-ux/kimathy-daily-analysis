@@ -238,10 +238,16 @@ class APISportsEnrichmentTests(unittest.TestCase):
             if url.endswith("/fixtures") and "date" in params:
                 return FakeResponse(football_schedule_payload())
             if url.endswith("/fixtures") and "team" in params:
+                self.assertNotIn("last", params)
+                self.assertEqual(params.get("from"), "2025-10-04")
+                self.assertEqual(params.get("to"), "2026-10-04")
+                self.assertEqual(params.get("timezone"), "Africa/Dar_es_Salaam")
                 return FakeResponse(team_histories[str(params["team"])])
             if url.endswith("/standings"):
                 return FakeResponse(football_standings_payload())
             if url.endswith("/fixtures/headtohead"):
+                self.assertNotIn("last", params)
+                self.assertEqual(params.get("h2h"), "1-2")
                 return FakeResponse(football_h2h_payload())
             self.fail(f"Unexpected request path: {url}")
 
@@ -500,6 +506,33 @@ class APISportsEnrichmentTests(unittest.TestCase):
             "Premier Home FC" in warning and "Unrelated City FC" in warning
             for warning in result.warnings
         ))
+
+    def test_verified_lask_display_name_alias_matches_without_lowering_threshold(self):
+        schedule = football_schedule_payload()
+        schedule["response"][0]["teams"]["home"]["name"] = "Lask Linz"
+        schedule["response"][0]["teams"]["away"]["name"] = "Liverpool"
+        candidate = football_candidate()
+        candidate.update({
+            "home_team": "LASK",
+            "away_team": "Liverpool",
+            "match_name": "LASK vs Liverpool",
+            "market_key": "unsupported_market",
+        })
+
+        def handler(call):
+            if call["url"].endswith("/status"):
+                return FakeResponse({"response": {"requests": {"current": 0, "limit_day": 100}}})
+            if call["url"].endswith("/fixtures"):
+                return FakeResponse(schedule)
+            self.fail(f"Unexpected request path: {call['url']}")
+
+        result = enrich_odds_candidates(
+            [candidate], football_key="offline-test-key", analysis_day="2026-10-04",
+            now=self.NOW, sessions={"football": FakeSession(handler)},
+        )
+        self.assertEqual(result.football_join_diagnostics["matched_candidates"], 1)
+        self.assertEqual(result.fixtures[0]["provider_fixture_id"], "9001")
+        self.assertEqual(result.fixtures[0]["provider_home_team_id"], "1")
 
     def test_standings_are_used_only_for_direct_double_chance_evidence(self):
         candidate = football_candidate()

@@ -8,6 +8,11 @@ on:
         required: true
         type: boolean
         default: false
+      analysis_requested_at:
+        description: "Server-generated UTC time when the owner requested this analysis"
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -46,6 +51,7 @@ jobs:
           ODDS_API_REGION: eu
           ODDS_API_SPORT_KEYS: ${{ vars.ODDS_API_SPORT_KEYS }}
           ODDS_API_MAX_AGE_MINUTES: '360'
+          ANALYSIS_REQUESTED_AT: ${{ inputs.analysis_requested_at }}
           # Optional fallback when using a separate, already-normalized feed.
           SPORTS_FEED_URL: ${{ secrets.SPORTS_FEED_URL }}
           SPORTS_FEED_TOKEN: ${{ secrets.SPORTS_FEED_TOKEN }}

@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import unittest
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from unittest.mock import patch
 
-from run_daily import _existing_ready_accumulator, main, reconcile_accumulator_results
+from run_daily import _existing_ready_accumulator, main, parse_analysis_requested_at, persist_analysis_snapshot, reconcile_accumulator_results
 
 
 class FakeResponse:
@@ -16,6 +16,63 @@ class FakeResponse:
 
     def json(self):
         return self.payload
+
+
+class RequestTimeAnchorTests(unittest.TestCase):
+    def test_request_time_controls_eat_slate_across_midnight(self):
+        now = datetime(2026, 10, 14, 0, 10, tzinfo=timezone.utc)
+        requested = parse_analysis_requested_at("2026-10-13T23:50:00+03:00", now)
+        self.assertEqual(requested, datetime(2026, 10, 13, 20, 50, tzinfo=timezone.utc))
+        from zoneinfo import ZoneInfo
+        self.assertEqual(requested.astimezone(ZoneInfo("Africa/Dar_es_Salaam")).date().isoformat(), "2026-10-13")
+
+    def test_request_time_must_include_offset_and_not_be_far_future(self):
+        now = datetime(2026, 10, 13, 12, 0, tzinfo=timezone.utc)
+        with self.assertRaisesRegex(ValueError, "timezone offset"):
+            parse_analysis_requested_at("2026-10-13T12:00:00", now)
+        with self.assertRaisesRegex(ValueError, "future"):
+            parse_analysis_requested_at("2026-10-13T12:06:00Z", now)
+
+
+class AnalysisSnapshotPersistenceTests(unittest.TestCase):
+    def test_persists_schedule_only_fixtures_and_completes_run_after_board(self):
+        board = [{
+            "sport_type": "football",
+            "provider_fixture_id": "fixture-101",
+            "match_name": "Harbor FC vs Hill United",
+            "home_team": "Harbor FC",
+            "away_team": "Hill United",
+            "match_time": "2026-10-13T15:00:00Z",
+            "kickoff_time_known": True,
+            "competition": "Coastal League",
+            "fixture_state": "scheduled",
+            "analysis_status": "fixture_only_no_matched_quote",
+            "market_options": [],
+            "recommended_market": None,
+            "analysis_note": "No quote from selected markets.",
+            "statistics_summary": {"h2h_sample": 0},
+        }]
+        post_responses = [FakeResponse([{"id": "run-101"}]), FakeResponse([])]
+        with patch("run_daily.requests.post", side_effect=post_responses) as post_mock, \
+             patch("run_daily.requests.patch", return_value=FakeResponse()) as patch_mock:
+            run_id = persist_analysis_snapshot(
+                "https://example.supabase.co/rest/v1",
+                {"apikey": "service", "Authorization": "Bearer service"},
+                date(2026, 10, 13),
+                datetime(2026, 10, 13, 0, 0, tzinfo=timezone.utc),
+                board,
+                coverage={"normalized_schedule_fixtures": 1},
+                warnings=["diagnostic"],
+            )
+        self.assertEqual(run_id, "run-101")
+        self.assertEqual(post_mock.call_count, 2)
+        run_payload = post_mock.call_args_list[0].kwargs["json"]
+        self.assertEqual(run_payload["status"], "running")
+        self.assertEqual(run_payload["fixture_count"], 1)
+        fixture_payload = post_mock.call_args_list[1].kwargs["json"]
+        self.assertEqual(fixture_payload[0]["market_options"], [])
+        self.assertEqual(fixture_payload[0]["analysis_status"], "fixture_only_no_matched_quote")
+        self.assertEqual(patch_mock.call_args.kwargs["json"]["status"], "completed")
 
 
 class AccumulatorSettlementHistoryTests(unittest.TestCase):

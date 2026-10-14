@@ -1,6 +1,8 @@
-"""API-Sports form/statistics enrichment for The Odds API candidates.
+"""API-Sports schedule discovery and statistics enrichment for Odds API quotes.
 
-Only independently sourced, sufficiently complete evidence is attached. This
+The date-based provider schedule is retained as the fixture universe even when
+there are no matching Odds API candidates. Only independently sourced,
+sufficiently complete evidence is attached to candidates. This
 module does not turn odds into a win probability and does not fabricate stats.
 Requests are bounded per API product, checked against the provider status
 endpoint before data calls, and all errors are sanitized so API keys never
@@ -58,6 +60,38 @@ class APISportsQuotaError(APISportsError):
     """Raised when the local/account quota guard declines another call."""
 
 
+def _safe_error_text(value: Any, limit: int = 180) -> str:
+    """Keep useful provider diagnostics while redacting credentials and URLs."""
+    text = str(value or "")
+    text = re.sub(r"https?://\S+", "<url>", text, flags=re.IGNORECASE)
+    text = re.sub(
+        r"(?i)\b(x-apisports-key|api[\s_-]*key|authorization)\b\s*[:=]\s*[^,;\s]+",
+        r"\1=<redacted>",
+        text,
+    )
+    text = re.sub(r"(?i)\b(bearer|token)\s+[^,;\s]{12,}", r"\1 <redacted>", text)
+    # Also remove credential-like opaque strings if a provider echoes one without
+    # a label. Normal fixture IDs and short team IDs are unaffected.
+    text = re.sub(r"(?<![A-Za-z0-9])[A-Za-z0-9._~+/=-]{32,}(?![A-Za-z0-9])", "<redacted>", text)
+    text = re.sub(r"[\r\n\t]+", " ", text)
+    text = re.sub(r"\s{2,}", " ", text).strip()
+    return text[:limit] or "unspecified provider error"
+
+
+def _safe_error_summary(errors: Any) -> str:
+    """Summarize API-Sports errors without logging request headers or secrets."""
+    if isinstance(errors, dict):
+        entries = list(errors.items())[:5]
+        parts = []
+        for key, value in entries:
+            field_name = re.sub(r"[^a-zA-Z0-9_-]+", "_", str(key)).strip("_")[:32] or "field"
+            parts.append(f"{field_name}: {_safe_error_text(value, 120)}")
+        return "; ".join(parts)[:500] or "unspecified provider error"
+    if isinstance(errors, (list, tuple)):
+        return "; ".join(_safe_error_text(value, 120) for value in list(errors)[:4])[:500]
+    return _safe_error_text(errors, 500)
+
+
 @dataclass
 class APISportsEnrichment:
     fixtures: list[dict[str, Any]]
@@ -67,6 +101,8 @@ class APISportsEnrichment:
     basketball_remaining: int | None = None
     football_enriched: int = 0
     basketball_enriched: int = 0
+    football_schedule: list[dict[str, Any]] = field(default_factory=list)
+    basketball_schedule: list[dict[str, Any]] = field(default_factory=list)
     football_join_diagnostics: dict[str, int] = field(default_factory=dict)
     basketball_join_diagnostics: dict[str, int] = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)
@@ -174,8 +210,10 @@ class APISportsClient:
             )
         errors = payload.get("errors")
         if errors:
+            safe_summary = _safe_error_summary(errors)
             raise APISportsError(
-                f"API-Sports {self.product} reported a data/request error for {endpoint}; details were suppressed."
+                f"API-Sports {self.product} reported a data/request error for {endpoint}; "
+                f"sanitized provider details: {safe_summary}."
             )
         return payload
 
@@ -333,6 +371,87 @@ def _game_parts(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def normalise_schedule_fixtures(
+    rows: list[dict[str, Any]], sport_type: str, analysis_day: date
+) -> list[dict[str, Any]]:
+    """Normalize a provider's date-schedule rows into a complete fixture board.
+
+    The board deliberately includes started/finished fixtures from the requested
+    EAT date; the picker separately rejects anything that is no longer upcoming.
+    """
+    sport = str(sport_type or "").strip().lower()
+    if sport not in {"football", "basketball"}:
+        return []
+    normalized: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        parts = _game_parts(row)
+        home = str(parts.get("home_name") or "").strip()
+        away = str(parts.get("away_name") or "").strip()
+        if not home or not away:
+            continue
+        kickoff = parts.get("time")
+        date_only = bool(parts.get("date_only"))
+        if kickoff is None:
+            continue
+        if kickoff.astimezone(EAT).date() != analysis_day:
+            continue
+        fixture_id = str(parts.get("id") or "").strip()
+        if not fixture_id:
+            fixture_id = "|".join((sport, analysis_day.isoformat(), home.casefold(), away.casefold()))
+        if fixture_id in seen:
+            continue
+        seen.add(fixture_id)
+        raw_status = parts.get("status")
+        if isinstance(raw_status, dict):
+            status_short = str(raw_status.get("short") or "").strip().upper()
+            status_long = str(raw_status.get("long") or raw_status.get("name") or "").strip()
+        else:
+            status_short = str(raw_status or "").strip().upper()
+            status_long = str(raw_status or "").strip()
+        final = _final_status(raw_status, sport)
+        live_codes = {"1H", "HT", "2H", "ET", "P", "LIVE", "Q1", "Q2", "Q3", "Q4", "OT", "INPLAY"}
+        if final:
+            state = "finished"
+        elif status_short in live_codes or "in play" in status_long.lower():
+            state = "live"
+        elif status_short in {"PST", "POSTPONED"} or "postpon" in status_long.lower():
+            state = "postponed"
+        elif status_short in {"CANC", "CANCELLED", "CANCELED"} or "cancel" in status_long.lower():
+            state = "cancelled"
+        elif status_short in {"ABD", "ABANDONED"} or "abandon" in status_long.lower():
+            state = "abandoned"
+        else:
+            state = "scheduled"
+        league = row.get("league") or row.get("leagueData") or {}
+        if not isinstance(league, dict):
+            league = {}
+        normalized.append({
+            "sport_type": sport,
+            "provider_fixture_id": fixture_id,
+            "provider_home_team_id": str(parts.get("home_id") or "") or None,
+            "provider_away_team_id": str(parts.get("away_id") or "") or None,
+            "provider_league_id": str(parts.get("league_id") or "") or None,
+            "provider_season": str(parts.get("season") or "") or None,
+            "match_name": f"{home} vs {away}",
+            "home_team": home,
+            "away_team": away,
+            "match_time": kickoff.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
+            "kickoff_time_known": not date_only,
+            "kickoff_time_source": "api-sports" if not date_only else "api-sports-date-only",
+            "competition": str(parts.get("league_name") or "Unknown competition").strip(),
+            "country": str(league.get("country") or "").strip() or None,
+            "round": str(league.get("round") or row.get("round") or "").strip() or None,
+            "provider_status": status_short or status_long or "unknown",
+            "fixture_state": state,
+            "analysis_date": analysis_day.isoformat(),
+            "source": "api-sports",
+        })
+    return sorted(normalized, key=lambda item: (item["match_time"], item["competition"], item["match_name"]))
+
+
 def _candidate_matches_game(
     candidate: dict[str, Any], game: dict[str, Any], target_day: date, tolerance_hours: int = 4
 ) -> tuple[float, float] | None:
@@ -425,6 +544,34 @@ def _reset_join_diagnostics(diagnostics: dict[str, int] | None, candidate_count:
         "ambiguous_fixture_match": 0,
         "invalid_candidate_time": 0,
     })
+
+
+def _closest_fixture_join_sample(
+    candidate: dict[str, Any], rows: list[dict[str, Any]]
+) -> str | None:
+    """Return a short public-name comparison for a failed team-name join."""
+    best: tuple[float, float, float, str, str] | None = None
+    for row in rows:
+        parts = _game_parts(row)
+        api_home = str(parts.get("home_name", "")).strip()
+        api_away = str(parts.get("away_name", "")).strip()
+        home_score = _name_similarity(candidate.get("home_team"), api_home)
+        away_score = _name_similarity(candidate.get("away_team"), api_away)
+        total = home_score + away_score
+        if best is None or total > best[0]:
+            best = (total, home_score, away_score, api_home, api_away)
+    if best is None:
+        return None
+
+    def compact(value: Any) -> str:
+        return re.sub(r"\s+", " ", str(value or "")).strip()[:55]
+
+    _, home_score, away_score, api_home, api_away = best
+    candidate_name = (
+        f"{compact(candidate.get('home_team'))} vs {compact(candidate.get('away_team'))}"
+    )
+    provider_name = f"{compact(api_home)} vs {compact(api_away)}"
+    return f"{candidate_name} <> {provider_name} (name scores {home_score:.2f}/{away_score:.2f})"
 
 
 def _played_count(row: dict[str, Any]) -> int | None:
@@ -709,6 +856,7 @@ def _football_enrich(
     warnings: list[str],
     session: Any = None,
     diagnostics: dict[str, int] | None = None,
+    schedule_rows_out: list[dict[str, Any]] | None = None,
 ) -> tuple[int, int, int | None]:
     _reset_join_diagnostics(diagnostics, len(candidates))
     client = APISportsClient("football", api_key, session=session)
@@ -726,9 +874,12 @@ def _football_enrich(
     if not fixtures_payload:
         return client.calls_used, 0, client.remaining_estimate
     provider_fixtures = _response_rows(fixtures_payload)
+    if schedule_rows_out is not None:
+        schedule_rows_out.extend(dict(row) for row in provider_fixtures)
     if diagnostics is not None:
         diagnostics["provider_schedule_rows"] = len(provider_fixtures)
     matches: dict[int, dict[str, Any]] = {}
+    unmatched_samples: list[str] = []
     for index, candidate in enumerate(candidates):
         candidate_time, _ = _parse_time(candidate.get("match_time"), assume_timezone=timezone.utc)
         if (
@@ -744,8 +895,22 @@ def _football_enrich(
         matched, reason = _best_match_with_reason(candidate, provider_fixtures, day)
         if diagnostics is not None and reason != "matched":
             diagnostics[reason] = diagnostics.get(reason, 0) + 1
+        if reason == "team_names_not_matched" and len(unmatched_samples) < 3:
+            sample = _closest_fixture_join_sample(candidate, provider_fixtures)
+            if sample:
+                unmatched_samples.append(sample)
         if matched:
             matches[index] = matched
+            candidates[index]["provider_fixture_id"] = matched.get("id") or None
+            candidates[index]["provider_home_team_id"] = matched.get("home_id") or None
+            candidates[index]["provider_away_team_id"] = matched.get("away_id") or None
+            candidates[index]["provider_league_id"] = matched.get("league_id") or None
+            candidates[index]["provider_season"] = matched.get("season")
+    if unmatched_samples:
+        warnings.append(
+            "API-Sports fixture join unmatched examples (Odds API <> API-Sports): "
+            + " | ".join(unmatched_samples)
+        )
     if diagnostics is not None:
         diagnostics["matched_candidates"] = len(matches)
 
@@ -1062,6 +1227,7 @@ def _basketball_enrich(
     warnings: list[str],
     session: Any = None,
     diagnostics: dict[str, int] | None = None,
+    schedule_rows_out: list[dict[str, Any]] | None = None,
 ) -> tuple[int, int, int | None]:
     _reset_join_diagnostics(diagnostics, len(candidates))
     client = APISportsClient("basketball", api_key, session=session)
@@ -1079,6 +1245,8 @@ def _basketball_enrich(
     if not games_payload:
         return client.calls_used, 0, client.remaining_estimate
     provider_games = _response_rows(games_payload)
+    if schedule_rows_out is not None:
+        schedule_rows_out.extend(dict(row) for row in provider_games)
     if diagnostics is not None:
         diagnostics["provider_schedule_rows"] = len(provider_games)
     matches: dict[int, dict[str, Any]] = {}
@@ -1099,6 +1267,11 @@ def _basketball_enrich(
             diagnostics[reason] = diagnostics.get(reason, 0) + 1
         if matched and matched.get("home_id") and matched.get("away_id"):
             matches[index] = matched
+            candidates[index]["provider_fixture_id"] = matched.get("id") or None
+            candidates[index]["provider_home_team_id"] = matched.get("home_id") or None
+            candidates[index]["provider_away_team_id"] = matched.get("away_id") or None
+            candidates[index]["provider_league_id"] = matched.get("league_id") or None
+            candidates[index]["provider_season"] = matched.get("season")
     if diagnostics is not None:
         diagnostics["matched_candidates"] = len(matches)
 
@@ -1471,14 +1644,16 @@ def enrich_odds_candidates(
 
     football_candidates = [row for row in rows if str(row.get("sport_type", "")).lower() == "football"]
     basketball_candidates = [row for row in rows if str(row.get("sport_type", "")).lower() == "basketball"]
-    if football_candidates and f_key:
+    # Discover the provider's full same-day schedule even when the Odds API
+    # returned no candidates. Odds are enrichment inputs, not the fixture universe.
+    if f_key:
         result.football_calls, result.football_enriched, result.football_remaining = _football_enrich(
             football_candidates, f_key, day, now_utc, result.warnings, sessions.get("football"),
-            result.football_join_diagnostics,
+            result.football_join_diagnostics, result.football_schedule,
         )
-    if basketball_candidates and b_key:
+    if b_key:
         result.basketball_calls, result.basketball_enriched, result.basketball_remaining = _basketball_enrich(
             basketball_candidates, b_key, day, now_utc, result.warnings, sessions.get("basketball"),
-            result.basketball_join_diagnostics,
+            result.basketball_join_diagnostics, result.basketball_schedule,
         )
     return result

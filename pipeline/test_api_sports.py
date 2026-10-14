@@ -209,6 +209,25 @@ def basketball_history_payloads():
 class APISportsEnrichmentTests(unittest.TestCase):
     NOW = datetime(2026, 10, 4, 7, 0, tzinfo=timezone.utc)
 
+    def test_schedule_is_discovered_even_when_odds_candidates_are_empty(self):
+        def handler(call):
+            if call["url"].endswith("/status"):
+                return FakeResponse({"response": {"requests": {"current": 1, "limit_day": 100}}})
+            if call["url"].endswith("/fixtures") and "date" in call["params"]:
+                return FakeResponse(football_schedule_payload())
+            self.fail(f"Unexpected API-Sports call: {call}")
+
+        session = FakeSession(handler)
+        result = enrich_odds_candidates(
+            [], api_sports_key="offline-test-key", analysis_day="2026-10-04", now=self.NOW,
+            sessions={"football": session},
+        )
+        self.assertEqual(result.fixtures, [])
+        self.assertEqual(len(result.football_schedule), 1)
+        self.assertEqual(result.football_schedule[0]["fixture"]["id"], 9001)
+        self.assertEqual(result.football_calls, 1)
+        self.assertEqual(len(session.calls), 2)  # status plus one schedule call
+
     def test_football_standings_and_h2h_enrich_a_qualified_candidate(self):
         team_histories = football_team_history_payloads()
 
@@ -245,6 +264,8 @@ class APISportsEnrichmentTests(unittest.TestCase):
         self.assertEqual(result.football_calls, 4)  # schedule + H2H + two cached team-form calls
         self.assertEqual(result.football_enriched, 2)
         row = result.fixtures[0]
+        self.assertEqual(row["provider_fixture_id"], "9001")
+        self.assertEqual(row["provider_home_team_id"], "1")
         self.assertEqual(row["features"]["historical_total_goals_sample"], 5)
         self.assertEqual(row["features"]["historical_over_0_5_count"], 4)
         self.assertEqual(row["features"]["historical_over_1_5_count"], 4)
@@ -475,6 +496,10 @@ class APISportsEnrichmentTests(unittest.TestCase):
         self.assertEqual(result.fixtures[0]["features"], {})
         self.assertEqual(result.football_join_diagnostics["team_names_not_matched"], 1)
         self.assertEqual(result.football_join_diagnostics["provider_schedule_rows"], 1)
+        self.assertTrue(any(
+            "Premier Home FC" in warning and "Unrelated City FC" in warning
+            for warning in result.warnings
+        ))
 
     def test_standings_are_used_only_for_direct_double_chance_evidence(self):
         candidate = football_candidate()
@@ -618,6 +643,37 @@ class APISportsEnrichmentTests(unittest.TestCase):
         self.assertNotIn(secret, " ".join(result.warnings))
         self.assertEqual(result.football_calls, 0)
         self.assertEqual(result.fixtures[0]["features"], {})
+
+    def test_provider_data_error_is_logged_safely_for_offline_diagnosis(self):
+        secret = "very-long-secret-key-1234567890-abcdef"
+
+        def handler(call):
+            url, params = call["url"], call["params"]
+            if url.endswith("/status"):
+                return FakeResponse({"response": {"requests": {"current": 0, "limit_day": 100}}})
+            if url.endswith("/fixtures") and "date" in params:
+                return FakeResponse(football_schedule_payload())
+            if url.endswith("/fixtures/headtohead"):
+                return FakeResponse({
+                    "errors": {"h2h": f"Invalid request; x-apisports-key={secret}"},
+                    "response": [],
+                })
+            self.fail(f"Unexpected request path: {url}")
+
+        result = enrich_odds_candidates(
+            [football_candidate()],
+            football_key=secret,
+            analysis_day="2026-10-04",
+            now=self.NOW,
+            sessions={"football": FakeSession(handler)},
+        )
+
+        warning_text = " ".join(result.warnings)
+        self.assertIn("fixtures/headtohead", warning_text)
+        self.assertIn("h2h", warning_text)
+        self.assertIn("<redacted>", warning_text)
+        self.assertNotIn(secret, warning_text)
+        self.assertEqual(result.football_enriched, 0)
 
     def test_no_key_makes_no_calls_or_inferred_evidence(self):
         result = enrich_odds_candidates(

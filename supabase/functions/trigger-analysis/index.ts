@@ -133,6 +133,10 @@ Deno.serve(async (request: Request): Promise<Response> => {
     return jsonResponse(403, { error: "This account is not authorized to request analysis." });
   }
 
+  // Capture the server-side request instant after owner verification. This same
+  // UTC instant is sent through GitHub and defines the workflow's EAT slate date.
+  const requestedAt = new Date().toISOString();
+
   // The SQL function locks a single row and records today's request before GitHub
   // is contacted, so two browser requests cannot race past the calendar-day limit.
   let reservation: { ok: boolean; status: number; data: unknown };
@@ -174,7 +178,10 @@ Deno.serve(async (request: Request): Promise<Response> => {
         },
         body: JSON.stringify({
           ref: REF,
-          inputs: { confirm_requests: "true" },
+          inputs: {
+            confirm_requests: "true",
+            analysis_requested_at: requestedAt,
+          },
         }),
       },
     );
@@ -187,21 +194,24 @@ Deno.serve(async (request: Request): Promise<Response> => {
     });
   }
 
-  if (githubResponse.status !== 204) {
+  // GitHub documents 204 for a workflow dispatch, but any 2xx response is a
+  // successful HTTP result. Do not release the reservation on HTTP 200.
+  if (!githubResponse.ok) {
     // The HTTP code is safe to surface; never log or return GitHub response
     // bodies, which may contain unnecessary repository/workflow diagnostics.
     console.warn("GitHub workflow dispatch response", { status: githubResponse.status });
     // A clear 4xx rejection means GitHub did not dispatch a run; undo only our
-    // own reservation. Keep it on 5xx because acceptance is uncertain.
-    if (githubResponse.status < 500) {
+    // own reservation. Keep it on 3xx/5xx because acceptance is uncertain.
+    const definitelyRejected = githubResponse.status >= 400 && githubResponse.status < 500;
+    if (definitelyRejected) {
       await releaseReservation(supabaseUrl, serviceKey, reservationId);
     }
     return jsonResponse(502, {
-      error: githubResponse.status < 500
+      error: definitelyRejected
         ? `GitHub rejected the secure dispatch (HTTP ${githubResponse.status}). The request limit was released; check the token's repository Actions permission and workflow setup.`
         : `GitHub could not confirm the dispatch (HTTP ${githubResponse.status}). To prevent a duplicate run, today's request reservation remains in effect.`,
       github_status: githubResponse.status,
-      next_allowed_at: githubResponse.status < 500 ? null : reserveData.next_allowed_at || null,
+      next_allowed_at: definitelyRejected ? null : reserveData.next_allowed_at || null,
     });
   }
 
@@ -210,6 +220,7 @@ Deno.serve(async (request: Request): Promise<Response> => {
   return jsonResponse(200, {
     ok: true,
     message: "Analysis requested. You can refresh this dashboard in a few minutes.",
+    requested_at: requestedAt,
     next_allowed_at: reserveData.next_allowed_at || null,
   });
 });

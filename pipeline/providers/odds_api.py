@@ -13,7 +13,7 @@ from __future__ import annotations
 import re
 import unicodedata
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from statistics import median
 from typing import Any, Iterable
@@ -98,6 +98,7 @@ class OddsAPIFeed:
 
     fixtures: list[dict[str, Any]] = field(default_factory=list)
     sport_keys: list[str] = field(default_factory=list)
+    market_plan_by_sport: dict[str, list[str]] = field(default_factory=dict)
     event_count: int = 0
     requests_used: int | None = None
     requests_remaining: int | None = None
@@ -336,6 +337,7 @@ def _make_candidate(
         "competition": competition,
         "selection_name": quote.selection_name,
         "bookmaker_key": quote.bookmaker_key,
+        "bookmaker_name": quote.bookmaker_name,
         "odds_updated_at": updated,
     }
 
@@ -781,9 +783,14 @@ def fetch_odds_api_feed(
     explicit_sport_keys: str | Iterable[str] | None = None,
     max_age_minutes: int = DEFAULT_MAX_ODDS_AGE_MINUTES,
     now: datetime | None = None,
+    analysis_day: date | str | None = None,
     session: Any = None,
 ) -> OddsAPIFeed:
-    """Fetch a quota-aware, multi-sport odds batch from The Odds API v4."""
+    """Fetch a quota-aware Odds API batch.
+
+    Market-family rotation can be anchored to the owner-request EAT date via
+    ``analysis_day`` while quote freshness/future-event checks use ``now``.
+    """
     client = TheOddsAPIClient(api_key, region=region, session=session)
     feed = OddsAPIFeed()
     active_sports, sports_headers = client.list_active_sports()
@@ -796,7 +803,14 @@ def fetch_odds_api_feed(
     feed.warnings.extend(selection_warnings)
 
     now_utc = _as_utc(now)
-    rotation_day = now_utc.astimezone(EAT).date().toordinal()
+    if isinstance(analysis_day, str):
+        try:
+            rotation_date = date.fromisoformat(analysis_day)
+        except ValueError:
+            raise OddsAPIError("Analysis date must use YYYY-MM-DD format.") from None
+    else:
+        rotation_date = analysis_day or now_utc.astimezone(EAT).date()
+    rotation_day = rotation_date.toordinal()
     soccer_index = 0
     market_credits_requested = 0
     for sport_key in selected:
@@ -819,6 +833,9 @@ def fetch_odds_api_feed(
             )
         if not markets:
             continue
+        # Persist the planned market scope so a missing quote can be distinguished
+        # from a market family that was not requested in this capped run.
+        feed.market_plan_by_sport[sport_key] = list(markets)
         estimated_cost = len(markets)  # one configured bookmaker region
         # If fewer credits remain than this competition's planned market cost,
         # request markets individually instead of losing the entire sport.

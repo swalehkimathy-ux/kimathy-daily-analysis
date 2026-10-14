@@ -1,6 +1,6 @@
 import unittest
 from unittest.mock import patch
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
 import requests
@@ -418,6 +418,7 @@ class APIClientTests(unittest.TestCase):
         )
         feed = fetch_odds_api_feed("unit-test-secret", now=NOW, session=session)
         self.assertEqual(feed.sport_keys, ["basketball_nba"])
+        self.assertEqual(feed.market_plan_by_sport["basketball_nba"], ["h2h", "totals", "spreads"])
         self.assertEqual(feed.event_count, 1)
         self.assertEqual(len(feed.fixtures), 1)
         self.assertEqual(feed.requests_used, 11)
@@ -443,6 +444,21 @@ class APIClientTests(unittest.TestCase):
         self.assertEqual(feed.fixtures, [])
         self.assertEqual(feed.requests_remaining, 0)
         self.assertTrue(any("below the full-market cost" in warning for warning in feed.warnings))
+
+    def test_market_rotation_uses_request_anchored_analysis_day_not_workflow_start_day(self):
+        runtime_now = datetime(2026, 10, 14, 0, 10, tzinfo=timezone.utc)  # 03:10 EAT on Oct 14
+        requested_day = date(2026, 10, 13)
+        session = FakeSession([
+            FakeResponse([{"key": "soccer_epl", "active": True}], headers={"x-requests-remaining": "500"}),
+            FakeResponse([]),
+        ])
+        with patch("providers.odds_api.markets_for_sport", wraps=markets_for_sport) as market_mock:
+            feed = fetch_odds_api_feed(
+                "unit-test-secret", now=runtime_now, analysis_day=requested_day, session=session
+            )
+        self.assertEqual(market_mock.call_args.args[2], requested_day.toordinal())
+        self.assertEqual(feed.sport_keys, ["soccer_epl"])
+        self.assertEqual(len(session.calls), 2)
 
     def test_runtime_market_requests_stay_within_22_credit_cap(self):
         soccer_keys = [

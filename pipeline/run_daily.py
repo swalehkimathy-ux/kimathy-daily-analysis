@@ -13,7 +13,8 @@ from zoneinfo import ZoneInfo
 import requests
 
 from engine import TARGET_MAX, TARGET_MIN, build_accumulator, prepare_fixture
-from providers.api_sports import enrich_odds_candidates, settle_pending_fixtures
+from fixture_board import build_fixture_board
+from providers.api_sports import enrich_odds_candidates, normalise_schedule_fixtures, settle_pending_fixtures
 from providers.opinions_rss import enrich_with_rss_opinions
 from providers.odds_api import OddsAPIError, fetch_odds_api_feed
 
@@ -107,6 +108,31 @@ def fixture_time(row: dict) -> datetime | None:
         return dt.astimezone(timezone.utc)
     except (TypeError, ValueError):
         return None
+
+
+def parse_analysis_requested_at(value: str | None, now: datetime | None = None) -> datetime:
+    """Use the request-time snapshot as the EAT slate date, not job start time."""
+    now_utc = now or datetime.now(timezone.utc)
+    if now_utc.tzinfo is None:
+        now_utc = now_utc.replace(tzinfo=timezone.utc)
+    now_utc = now_utc.astimezone(timezone.utc)
+    if not str(value or "").strip():
+        return now_utc
+    text = str(value).strip()
+    try:
+        if text.endswith("Z"):
+            text = text[:-1] + "+00:00"
+        requested = datetime.fromisoformat(text)
+    except ValueError:
+        raise ValueError("ANALYSIS_REQUESTED_AT must be an ISO-8601 timestamp.") from None
+    if requested.tzinfo is None:
+        raise ValueError("ANALYSIS_REQUESTED_AT must include a timezone offset.")
+    requested = requested.astimezone(timezone.utc)
+    if requested > now_utc + timedelta(minutes=5):
+        raise ValueError("ANALYSIS_REQUESTED_AT cannot be in the future.")
+    if requested < now_utc - timedelta(hours=36):
+        raise ValueError("ANALYSIS_REQUESTED_AT is too old to define a current analysis slate.")
+    return requested
 
 
 def _identity(row: dict) -> tuple[str, str, str]:
@@ -267,6 +293,101 @@ def _existing_ready_accumulator(base: str, headers: dict[str, str], analysis_dat
     return None
 
 
+def persist_analysis_snapshot(
+    base: str,
+    headers: dict[str, str],
+    analysis_date: date,
+    requested_at: datetime,
+    board: list[dict],
+    *,
+    coverage: dict,
+    warnings: list[str],
+) -> str:
+    """Persist one auditable full-schedule snapshot plus coverage diagnostics."""
+    fixture_count = len(board)
+    quote_fixture_count = sum(1 for row in board if row.get("market_options"))
+    option_count = sum(len(row.get("market_options") or []) for row in board)
+    eligible_count = sum(1 for row in board if row.get("recommended_market"))
+    run_payload = {
+        "analysis_date": analysis_date.isoformat(),
+        "requested_at": requested_at.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "status": "running",
+        "source_scope": "API-Sports same-day schedule; The Odds API quotes only for selected active sport keys and requested markets.",
+        "fixture_count": fixture_count,
+        "quote_fixture_count": quote_fixture_count,
+        "market_option_count": option_count,
+        "eligible_fixture_count": eligible_count,
+        "coverage": coverage,
+        "warnings": [str(warning)[:500] for warning in warnings[:20]],
+    }
+    response = requests.post(
+        f"{base}/analysis_runs",
+        headers=supabase_headers(headers["apikey"], "return=representation"),
+        json=run_payload,
+        timeout=TIMEOUT,
+    )
+    request_ok(response, "Analysis run snapshot insert")
+    run_rows = response.json()
+    if not isinstance(run_rows, list) or not run_rows or not run_rows[0].get("id"):
+        fail("Supabase did not return the analysis run id.")
+    run_id = str(run_rows[0]["id"])
+
+    values = []
+    for row in board:
+        values.append({
+            "run_id": run_id,
+            "analysis_date": analysis_date.isoformat(),
+            "sport_type": row.get("sport_type"),
+            "provider_fixture_id": str(row.get("provider_fixture_id") or ""),
+            "provider_home_team_id": row.get("provider_home_team_id"),
+            "provider_away_team_id": row.get("provider_away_team_id"),
+            "provider_league_id": row.get("provider_league_id"),
+            "provider_season": row.get("provider_season"),
+            "match_name": row.get("match_name"),
+            "home_team": row.get("home_team"),
+            "away_team": row.get("away_team"),
+            "match_time": row.get("match_time"),
+            "kickoff_time_known": bool(row.get("kickoff_time_known", True)),
+            "kickoff_time_source": row.get("kickoff_time_source") or "api-sports",
+            "competition": row.get("competition"),
+            "country": row.get("country"),
+            "round": row.get("round"),
+            "provider_status": row.get("provider_status"),
+            "fixture_state": row.get("fixture_state"),
+            "analysis_status": row.get("analysis_status"),
+            "market_options": row.get("market_options") or [],
+            "recommended_market": row.get("recommended_market"),
+            "recommended_score": row.get("recommended_score"),
+            "selected_for_ticket": bool(row.get("selected_for_ticket")),
+            "analysis_note": str(row.get("analysis_note") or "")[:2400],
+            "statistics_summary": row.get("statistics_summary") or {},
+            "forebet_url": row.get("forebet_url"),
+            "forebet_injuries_url": row.get("forebet_injuries_url"),
+            "statarea_url": row.get("statarea_url"),
+            "source": row.get("source") or "api-sports-schedule",
+        })
+    for offset in range(0, len(values), 100):
+        batch = values[offset:offset + 100]
+        response = requests.post(
+            f"{base}/analysis_fixtures",
+            params={"on_conflict": "run_id,sport_type,provider_fixture_id"},
+            headers=supabase_headers(headers["apikey"], "resolution=merge-duplicates,return=minimal"),
+            json=batch,
+            timeout=TIMEOUT,
+        )
+        request_ok(response, "Full fixture board insert")
+    completed_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    complete_response = requests.patch(
+        f"{base}/analysis_runs",
+        params={"id": f"eq.{quote(run_id, safe='-')}"},
+        headers=supabase_headers(headers["apikey"], "return=minimal"),
+        json={"status": "completed", "completed_at": completed_at},
+        timeout=TIMEOUT,
+    )
+    request_ok(complete_response, "Analysis run completion update")
+    return run_id
+
+
 def main() -> int:
     supabase_url = os.getenv("SUPABASE_URL", "").rstrip("/")
     service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
@@ -289,15 +410,24 @@ def main() -> int:
     if not odds_api_key and not feed_url:
         fail("Set THE_ODDS_API_KEY, or provide SPORTS_FEED_URL as a normalized-feed fallback.")
 
-    now_eat = datetime.now(EAT)
-    analysis_date = now_eat.date()
+    now_utc = datetime.now(timezone.utc)
+    try:
+        requested_at = parse_analysis_requested_at(os.getenv("ANALYSIS_REQUESTED_AT"), now_utc)
+    except ValueError as exc:
+        fail(str(exc))
+    now_eat = now_utc.astimezone(EAT)
+    analysis_date = requested_at.astimezone(EAT).date()
     start_eat = datetime.combine(analysis_date, time.min, tzinfo=EAT)
     end_eat = datetime.combine(analysis_date + timedelta(days=1), time.min, tzinfo=EAT)
     start_utc = start_eat.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
     end_utc = end_eat.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
-    now_utc = datetime.now(timezone.utc)
+    print(
+        f"Analysis snapshot: requested_at={requested_at.astimezone(EAT).isoformat()}; "
+        f"EAT_analysis_date={analysis_date.isoformat()}; run_started_at={now_eat.isoformat()}."
+    )
     base = f"{supabase_url}/rest/v1"
     headers = supabase_headers(service_key)
+    run_warnings: list[str] = []
 
     # Claim first so even result-enrichment calls are covered by the per-calendar-day limit.
     if not claim_manual_analysis_window(base, headers):
@@ -333,10 +463,13 @@ def main() -> int:
             f"basketball_settled={settlement.basketball_settled}; database_updates={changed}; "
             f"football_calls={settlement.football_calls}; basketball_calls={settlement.basketball_calls}."
         )
+        run_warnings.extend(settlement.warnings)
         for warning in settlement.warnings[:8]:
             print(f"API-Sports settlement note: {warning}")
     elif pending:
-        print(f"Result settlement skipped: {len(pending)} past fixture(s) pending; API-Sports key is not configured.")
+        note = f"Result settlement skipped: {len(pending)} past fixture(s) pending; API-Sports key is not configured."
+        run_warnings.append(note)
+        print(note)
     history_changes = reconcile_accumulator_results(base, headers, now_eat, lookback_days=90)
     print(f"Accumulator history: settlement records refreshed={history_changes}.")
 
@@ -352,6 +485,8 @@ def main() -> int:
         return 0
 
     odds_feed = None
+    api_sports_enrichment = None
+    schedule_rows: list[dict] = []
     if odds_api_key:
         try:
             odds_feed = fetch_odds_api_feed(
@@ -360,6 +495,7 @@ def main() -> int:
                 explicit_sport_keys=odds_sport_keys or None,
                 max_age_minutes=odds_max_age,
                 now=now_utc,
+                analysis_day=analysis_date,
             )
         except OddsAPIError as exc:
             fail(str(exc))
@@ -371,10 +507,12 @@ def main() -> int:
             f"events={odds_feed.event_count}; supported_odds_candidates={len(incoming)}; "
             f"credits_used={used}; credits_remaining={remaining}."
         )
+        run_warnings.extend(odds_feed.warnings)
         for warning in odds_feed.warnings[:8]:
             print(f"The Odds API note: {warning}")
     else:
         incoming = fetch_provider_feed(feed_url, feed_token)
+        run_warnings.append("Using the configured normalized sports-feed fallback; the Odds API is not active for this run.")
 
     sports_counts = Counter(str(row.get("sport_type", "unknown")).lower() for row in incoming)
     print(
@@ -404,7 +542,19 @@ def main() -> int:
             analysis_day=analysis_date,
             now=now_utc,
         )
+        api_sports_enrichment = enrichment
         incoming = enrichment.fixtures
+        schedule_rows = (
+            normalise_schedule_fixtures(enrichment.football_schedule, "football", analysis_date)
+            + normalise_schedule_fixtures(enrichment.basketball_schedule, "basketball", analysis_date)
+        )
+        run_warnings.extend(enrichment.warnings)
+        print(
+            "API-Sports schedule discovery: "
+            f"football_rows={len(enrichment.football_schedule)}; "
+            f"basketball_rows={len(enrichment.basketball_schedule)}; "
+            f"normalized_fixtures={len(schedule_rows)}."
+        )
         print(
             "API-Sports enrichment: "
             f"football_calls={enrichment.football_calls}; "
@@ -421,6 +571,7 @@ def main() -> int:
         for warning in enrichment.warnings[:8]:
             print(f"API-Sports note: {warning}")
     else:
+        run_warnings.append("API-Sports enrichment/schedule discovery skipped because no API-Sports product key is configured.")
         print("API-Sports enrichment skipped: no product key is configured; no statistics evidence was inferred.")
 
     # RSS contributes only attributed context. It never changes evidence gates,
@@ -435,6 +586,7 @@ def main() -> int:
         f"matched_articles={opinion_enrichment.matched_articles}. "
         "This context does not affect pick eligibility or ranking."
     )
+    run_warnings.extend(opinion_enrichment.warnings)
     for warning in opinion_enrichment.warnings[:8]:
         print(f"RSS source note: {warning}")
 
@@ -444,9 +596,19 @@ def main() -> int:
     evidence_rejections_by_sport: Counter[str] = Counter()
     time_rejections_by_sport: Counter[str] = Counter()
     eligible_by_sport: Counter[str] = Counter()
+    schedule_by_provider_id = {
+        (str(row.get("sport_type", "")).strip().lower(), str(row.get("provider_fixture_id") or "").strip()): row
+        for row in schedule_rows
+        if row.get("provider_fixture_id")
+    }
     for raw in incoming:
         sport = str(raw.get("sport_type", "unknown")).strip().lower() or "unknown"
         candidates_by_sport[sport] += 1
+        provider_fixture_id = str(raw.get("provider_fixture_id") or "").strip()
+        scheduled_fixture = schedule_by_provider_id.get((sport, provider_fixture_id)) if provider_fixture_id else None
+        if scheduled_fixture and str(scheduled_fixture.get("fixture_state") or "scheduled").lower() != "scheduled":
+            time_rejections_by_sport[sport] += 1
+            continue
         row = prepare_fixture(raw)
         if row is None:
             evidence_rejections_by_sport[sport] += 1
@@ -469,7 +631,7 @@ def main() -> int:
         print(
             f"Eligibility counts {sport}: candidates={candidates_by_sport[sport]}; "
             f"market_evidence_or_validation_rejected={evidence_rejections_by_sport[sport]}; "
-            f"date_or_time_rejected={time_rejections_by_sport[sport]}; "
+            f"time_or_schedule_status_rejected={time_rejections_by_sport[sport]}; "
             f"eligible_today={eligible_by_sport[sport]}."
         )
     if odds_feed is not None and not eligible_candidates:
@@ -507,6 +669,77 @@ def main() -> int:
     result = build_accumulator(eligible_candidates)
     valid = bool(result["in_range"])
     total = Decimal(str(result["total_odds"]))
+
+    board = build_fixture_board(
+        schedule_rows,
+        incoming,
+        analysis_day=analysis_date,
+        requested_at=requested_at,
+        now=now_utc,
+        ticket_picks=result["picks"] if valid else [],
+    )
+    joined_candidate_ids = {
+        (str(row.get("sport_type", "")).strip().lower(), str(row.get("provider_fixture_id") or "").strip())
+        for row in incoming if row.get("provider_fixture_id")
+    }
+    enriched_fixture_ids = {
+        (str(row.get("sport_type", "")).strip().lower(), str(row.get("provider_fixture_id") or "").strip())
+        for row in incoming if row.get("provider_fixture_id") and isinstance(row.get("features"), dict) and row.get("features")
+    }
+    coverage = {
+        "fixture_source": "API-Sports same-day schedule" if api_sports_enrichment else "not_configured",
+        "fixture_discovery_requested": bool(api_sports_enrichment),
+        "football_schedule_rows": len(api_sports_enrichment.football_schedule) if api_sports_enrichment else 0,
+        "basketball_schedule_rows": len(api_sports_enrichment.basketball_schedule) if api_sports_enrichment else 0,
+        "normalized_schedule_fixtures": len(schedule_rows),
+        "odds_source": "The Odds API" if odds_feed else ("normalized-feed fallback" if feed_url else "not_configured"),
+        "odds_selected_sport_keys": list(odds_feed.sport_keys) if odds_feed else [],
+        "odds_market_plan_by_sport": odds_feed.market_plan_by_sport if odds_feed else {},
+        "odds_events_returned": int(odds_feed.event_count or 0) if odds_feed else None,
+        "odds_requests_used_header": odds_feed.requests_used if odds_feed else None,
+        "odds_requests_remaining_header": odds_feed.requests_remaining if odds_feed else None,
+        "normalized_feed_candidates": len(incoming) if not odds_feed else None,
+        "odds_candidates_after_market_normalization": len(incoming),
+        "odds_candidates_joined_to_api_sports": len(joined_candidate_ids),
+        "fixtures_with_statistics_features": len(enriched_fixture_ids),
+        "api_sports_football_calls": api_sports_enrichment.football_calls if api_sports_enrichment else 0,
+        "api_sports_football_remaining_estimate": api_sports_enrichment.football_remaining if api_sports_enrichment else None,
+        "api_sports_basketball_calls": api_sports_enrichment.basketball_calls if api_sports_enrichment else 0,
+        "api_sports_basketball_remaining_estimate": api_sports_enrichment.basketball_remaining if api_sports_enrichment else None,
+        "fixture_rows_with_quotes": sum(1 for row in board if row.get("market_options")), 
+        "market_options_attached": sum(len(row.get("market_options") or []) for row in board),
+        "fixture_rows_with_qualified_market": sum(1 for row in board if row.get("recommended_market")),
+        "ticket_build_status": "ready" if valid else "no_ticket",
+        "ticket_candidate_leg_count": len(result["picks"]),
+        "ticket_candidate_combined_odds": float(total),
+        "ticket_diagnosis": (
+            "Evidence-qualified ticket reached the 1.50–<1.90 target."
+            if valid else
+            "No market candidate passed current evidence/validation gates."
+            if not eligible_candidates else
+            "Evidence-qualified candidates did not form a decorrelated accumulator within the 1.50–<1.90 target; no weak legs were added."
+        ),
+        "football_join_diagnostics": api_sports_enrichment.football_join_diagnostics if api_sports_enrichment else {},
+        "basketball_join_diagnostics": api_sports_enrichment.basketball_join_diagnostics if api_sports_enrichment else {},
+        "limits_note": "Schedule breadth and odds coverage are limited to provider responses, configured sport keys, market selection, and existing per-run quotas. This run does not imply global competition coverage.",
+    }
+    if api_sports_enrichment and not schedule_rows:
+        run_warnings.append("API-Sports returned no normalizable fixture rows for the request-anchored EAT date; inspect provider response/coverage and credentials.")
+    run_id = persist_analysis_snapshot(
+        base,
+        headers,
+        analysis_date,
+        requested_at,
+        board,
+        coverage=coverage,
+        warnings=run_warnings,
+    )
+    print(
+        f"Full fixture board persisted: run_id={run_id}; fixtures={len(board)}; "
+        f"quotes={coverage['fixture_rows_with_quotes']}; "
+        f"market_options={coverage['market_options_attached']}; "
+        f"evidence_qualified_fixtures={coverage['fixture_rows_with_qualified_market']}."
+    )
     payload = {
         "analysis_date": analysis_date.isoformat(),
         # Create/update as no_ticket first. A crash before the legs are inserted

@@ -281,6 +281,43 @@
     .fixture-details { grid-column: 1 / -1; padding: 9px 11px; margin: -2px 0 2px; color: #9ba7af; background: rgba(196,240,108,.035); border: 1px solid rgba(196,240,108,.1); border-radius: 8px; font-size: 9px; line-height: 1.55; }
     .fixture-details strong { display: block; margin-bottom: 3px; color: #c4d0c0; font-size: 8px; letter-spacing: .06em; text-transform: uppercase; }
     .fixture-details a { color: var(--lime); text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere; }
+    .coverage-panel { padding: 13px 16px; margin-bottom: 14px; border: 1px solid rgba(139,189,255,.13); border-radius: 12px; background: rgba(139,189,255,.035); color: #aab7c2; font-size: 9px; line-height: 1.55; }
+    .coverage-panel strong { color: #dfe8ed; }
+    .coverage-heading { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 5px 14px; margin-bottom: 7px; }
+    .coverage-grid { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+    .coverage-chip { padding: 4px 7px; border: 1px solid rgba(255,255,255,.07); border-radius: 6px; background: rgba(255,255,255,.025); color: #a9b7c1; }
+    .coverage-warnings { margin-top: 6px; color: #ffbd72; }
+    .schedule-row { display: grid; grid-template-columns: minmax(0,1fr) 100px; gap: 12px; padding: 14px 10px; border-top: 1px solid rgba(255,255,255,.055); }
+    .schedule-main { min-width: 0; }
+    .schedule-topline { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 9px; margin-bottom: 6px; color: #7d8a95; font-size: 9px; }
+    .schedule-name { margin: 0; color: #e6ebee; font-size: 12px; font-weight: 680; }
+    .schedule-subline { margin-top: 4px; color: #82909b; font-size: 9px; }
+    .schedule-state { padding: 3px 6px; color: #aab4bd; background: rgba(255,255,255,.035); border: 1px solid rgba(255,255,255,.065); border-radius: 6px; font-size: 7px; font-weight: 760; letter-spacing: .06em; text-transform: uppercase; }
+    .schedule-recommendation { margin-top: 8px; padding: 8px 10px; border: 1px solid rgba(196,240,108,.13); border-radius: 8px; background: rgba(196,240,108,.035); color: #b8c5ad; font-size: 9px; line-height: 1.5; }
+    .schedule-recommendation strong { color: var(--lime); }
+    .schedule-options { display: grid; gap: 5px; margin-top: 8px; }
+    .market-option { display: flex; flex-wrap: wrap; align-items: center; gap: 5px 8px; padding: 6px 8px; border-radius: 7px; background: rgba(255,255,255,.025); color: #a8b3bc; font-size: 8px; }
+    .market-option.pass { border: 1px solid rgba(196,240,108,.1); }
+    .market-option .market-result { margin-left: auto; color: #91a0aa; }
+    .market-option .market-result.pass { color: var(--lime); }
+    .market-option-note { flex-basis: 100%; color: #82909b; line-height: 1.45; overflow-wrap: anywhere; }
+    .market-option a,.schedule-links a { color: var(--blue); text-decoration: underline; text-underline-offset: 2px; }
+    .schedule-links { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; font-size: 8px; }
+    .schedule-score { text-align: right; align-self: start; }
+    .schedule-score strong { display: block; color: #d6e0e6; font-size: 16px; }
+    .schedule-score small { color: #75838f; font-size: 8px; }
+    .schedule-empty { padding: 26px 18px; text-align: center; color: var(--muted); font-size: 10px; line-height: 1.6; }
+    .run-history-list { display: grid; gap: 8px; padding: 0 18px 16px; }
+    .run-history-row { display: grid; grid-template-columns: minmax(110px, .7fr) minmax(0, 2fr); gap: 8px; padding: 9px 10px; background: rgba(255,255,255,.025); border: 1px solid rgba(255,255,255,.05); border-radius: 8px; color: #97a5af; font-size: 9px; }
+    .run-history-row strong { color: #dde4e8; }
+    .audit-summary { padding: 0 18px 10px; color: #9aa8b2; font-size: 9px; line-height: 1.55; }
+    .audit-table-wrap { overflow-x: auto; padding: 0 18px 16px; }
+    .audit-table { width: 100%; border-collapse: collapse; min-width: 500px; font-size: 9px; }
+    .audit-table th,.audit-table td { padding: 8px 9px; border-bottom: 1px solid rgba(255,255,255,.055); text-align: left; white-space: nowrap; }
+    .audit-table th { color: #778590; font-size: 8px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+    .audit-table td { color: #aab6bf; }
+    .audit-table td strong { color: #d8e1e5; }
+    .audit-footnote { padding: 0 18px 16px; color: #74828c; font-size: 8px; line-height: 1.55; }
     .score-col { min-width: 0; }
     .score-value { display: flex; justify-content: space-between; gap: 4px; color: #d6e0e6; font-size: 10px; font-weight: 730; }
     .score-value small { color: #697782; font-size: 8px; font-weight: 500; }
@@ -462,6 +499,13 @@
       .fixture-view-toolbar { align-items: flex-start; flex-direction: column; padding: 0 13px 12px; }
       .search-wrap { width: 100%; max-width: none; }
       .filter-note { align-self: flex-end; }
+      .schedule-row { grid-template-columns: 1fr; gap: 7px; padding: 13px 7px; }
+      .schedule-score { text-align: left; }
+      .schedule-score strong { display: inline-block; margin-right: 5px; font-size: 13px; }
+      .schedule-score small { display: inline-block; }
+      .run-history-row { grid-template-columns: 1fr; }
+      .coverage-heading { flex-direction: column; }
+      .market-option .market-result { margin-left: 0; }
       .ticket-large .ticket-odds-box { padding: 15px; }
       .app-footer { flex-direction: column; gap: 6px; }
     }
@@ -584,7 +628,7 @@
             <div class="hero-copy">
               <div class="hero-kicker"><i class="status-dot"></i> DAILY SMART ACCUMULATOR <span style="opacity:.65">·</span> <span id="hero-mode-label">PRIVATE WORKSPACE</span></div>
               <h2>Find the signal.<br><span>Keep the ticket measured.</span></h2>
-              <p>The daily pipeline stores only candidates that pass market-specific statistics checks. The dashboard displays the saved ticket or clearly says no ticket was qualified.</p>
+              <p>The full API-Sports schedule is stored before odds filtering. Only markets that pass existing evidence gates can enter the saved ticket; missing quotes or statistics remain visible as coverage gaps.</p>
               <div class="hero-actions">
                 <button class="button primary" type="button" data-view-link="accumulator">Review accumulator <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14m-6-6 6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
                 <button class="button secondary-dark" type="button" data-view-link="fixtures">Explore fixtures</button>
@@ -640,7 +684,8 @@
 
         <section class="view" id="fixtures-view" aria-label="Fixture board">
           <div class="panel fixture-view-panel">
-            <div class="panel-header"><div><h2 class="panel-title">Fixture board</h2><p class="panel-subtitle">Review evidence-backed candidates, their market, odds and supporting notes.</p></div><span class="target-pill" id="fixture-count-pill">0 FIXTURES</span></div>
+              <div class="panel-header"><div><h2 class="panel-title">Full fixture board</h2><p class="panel-subtitle">API-Sports schedule first; quote coverage and evidence gaps remain visible.</p></div><span class="target-pill" id="fixture-count-pill">0 FIXTURES</span></div>
+            <div class="coverage-panel" id="fixture-coverage"></div>
             <div class="fixture-view-toolbar">
               <div class="filter-chips" data-filter-chips>
                 <button class="filter-chip active" type="button" data-sport-filter="all">All sports</button>
@@ -675,6 +720,14 @@
         </section>
 
         <section class="view" id="results-view" aria-label="Results and history">
+          <section class="panel" style="margin-bottom:14px">
+            <div class="panel-header"><div><h2 class="panel-title">Analysis run history</h2><p class="panel-subtitle">Request-time EAT date, schedule breadth, odds coverage and enrichment gaps.</p></div></div>
+            <div class="run-history-list" id="analysis-run-history"></div>
+          </section>
+          <section class="panel" style="margin-bottom:14px">
+            <div class="panel-header"><div><h2 class="panel-title">Chronological score audit</h2><p class="panel-subtitle">Verified pre-match candidates are deduplicated by fixture and split by match time; observed results are not probabilities.</p></div></div>
+            <div id="analysis-score-audit"></div>
+          </section>
           <section class="panel">
             <div class="panel-header"><div><h2 class="panel-title">Ticket results & history</h2><p class="panel-subtitle">Automatically recorded from matched API-Sports final scores.</p></div><button class="link-button" type="button" id="history-refresh">Refresh history</button></div>
             <div id="history-content"></div>
@@ -698,14 +751,14 @@
       const TARGET_MAX = 1.9;
       const TZ = 'Africa/Dar_es_Salaam';
       const state = {
-        fixtures: [], selectedIds: new Set(), expandedIds: new Set(), activeView: 'overview', activeSport: 'all', search: '', sort: 'score',
+        fixtures: [], scheduleMatches: [], analysisRuns: [], latestRun: null, verifiedFixtures: [], selectedIds: new Set(), expandedIds: new Set(), activeView: 'overview', activeSport: 'all', search: '', sort: 'score',
         stake: 10000, source: 'disconnected', warning: '', toastTimer: null, history: [], accumulator: null, session: null, lastRefreshed: null, analysisRecordLoaded: false,
         manualRunStatus: null, triggerPending: false, triggerNotice: '', triggerNoticeType: ''
       };
 
       const titles = {
         overview: ['Daily analysis', 'A compact view of eligible fixtures and today\'s accumulator.'],
-        fixtures: ['Fixture board', 'Review candidates that passed the daily market-specific evidence rules.'],
+        fixtures: ['Fixture board', 'Start with the provider schedule, then inspect quote coverage, available markets, evidence and missing data.'],
         accumulator: ['Smart accumulator', 'Inspect the saved accumulator, captured odds and paper settlement status.'],
         results: ['Results & history', 'Review saved daily records and verified result statuses.']
       };
@@ -801,6 +854,17 @@
         else arr.sort(scoreSort);
         return arr;
       }
+      function filteredScheduleMatches() {
+        let arr = (state.scheduleMatches || []).slice();
+        if (state.activeSport !== 'all') arr = arr.filter(f => f.sport_type === state.activeSport);
+        if (state.search.trim()) {
+          const q = state.search.trim().toLowerCase();
+          arr = arr.filter(f => `${f.match_name || ''} ${f.competition || ''} ${f.country || ''} ${(f.market_options || []).map(m => `${m.market_name || ''} ${m.selection_name || ''}`).join(' ')}`.toLowerCase().includes(q));
+        }
+        if (state.sort === 'score') arr.sort((a,b) => (Number(b.recommended_score) || 0) - (Number(a.recommended_score) || 0) || timeValue(a.match_time) - timeValue(b.match_time));
+        else arr.sort((a,b) => timeValue(a.match_time) - timeValue(b.match_time));
+        return arr;
+      }
       function fixtureCard(f) {
         const sport = String(f.sport_type || '').toLowerCase();
         const selected = state.selectedIds.has(String(f.id));
@@ -820,15 +884,160 @@
           ${expanded ? `<div class="fixture-details"><strong>Analysis notes</strong>${linkifySafeText(f.analysis_note || 'No supporting note was supplied for this fixture.')}</div>` : ''}
         </article>`;
       }
+      function scheduleCard(f) {
+        const sport = String(f.sport_type || '').toLowerCase();
+        const id = String(f.id || f.provider_fixture_id || '');
+        const expanded = state.expandedIds.has(id);
+        const options = Array.isArray(f.market_options) ? f.market_options : [];
+        const recommended = f.recommended_market && typeof f.recommended_market === 'object' ? f.recommended_market : null;
+        const stats = f.statistics_summary || {};
+        const h2h = Number(stats.h2h_sample) || 0;
+        const homeForm = Number(stats.home_form_sample) || 0;
+        const awayForm = Number(stats.away_form_sample) || 0;
+        const status = String(f.fixture_state || 'unknown').replace(/_/g, ' ');
+        const optionsMarkup = options.length ? `<div class="schedule-options">${options.map(option => {
+          const passed = option.evidence_status === 'passes_current_gate';
+          const odds = option.picked_odds != null ? `@ ${fmtOdds(option.picked_odds)}` : 'odds unavailable';
+          const freshness = option.odds_updated_at ? `updated ${esc(fmtTime(option.odds_updated_at))}${option.quote_stale_over_6h ? ' · stale (>6h)' : ''}` : 'timestamp unavailable';
+          return `<div class="market-option ${passed ? 'pass' : ''}"><b>${esc(option.market_name || 'Market')}</b><span>${esc(option.selection_name || '')}</span><span>${esc(odds)}</span><small>${esc(freshness)}</small><span class="market-result ${passed ? 'pass' : ''}">${passed ? `EVIDENCE RANK ${Number(option.analysis_score || 0).toFixed(1)}/100` : 'GATE NOT PASSED'}</span>${option.bookmaker_name ? `<small>${esc(option.bookmaker_name)}</small>` : ''}${option.analysis_note ? `<div class="market-option-note">${linkifySafeText(option.analysis_note)}</div>` : ''}</div>`;
+        }).join('')}</div>` : `<div class="schedule-recommendation">No matching quote in the selected Odds API feed. The fixture stays listed; quote absence is a coverage gap, not evidence about the outcome.</div>`;
+        const recommendation = recommended
+          ? `<div class="schedule-recommendation"><strong>Top market by current evidence:</strong> ${esc(recommended.market_name || '')} · ${esc(recommended.selection_name || '')} @ ${fmtOdds(recommended.picked_odds)}. Evidence rank ${Number(recommended.analysis_score || 0).toFixed(1)}/100 — a heuristic ordering signal, not a calibrated probability. ${linkifySafeText(recommended.analysis_note || '')}</div>`
+          : options.length
+            ? `<div class="schedule-recommendation">Quotes are available, but no market passed the current evidence/validation gate. No pick was forced.</div>`
+            : '';
+        const links = [
+          f.forebet_url ? `<a href="${esc(f.forebet_url)}" target="_blank" rel="noopener noreferrer">Verify on Forebet</a>` : '',
+          f.forebet_injuries_url ? `<a href="${esc(f.forebet_injuries_url)}" target="_blank" rel="noopener noreferrer">Check injuries</a>` : '',
+          f.statarea_url ? `<a href="${esc(f.statarea_url)}" target="_blank" rel="noopener noreferrer">Compare on Statarea</a>` : ''
+        ].filter(Boolean).join('');
+        return `<article class="schedule-row">
+          <div class="schedule-main">
+            <div class="schedule-topline"><span class="sport-label ${esc(sport)}">${sportIcon(sport)}${esc(sport)}</span><span>${f.kickoff_time_known === false ? 'Kickoff time TBC' : esc(fmtTime(f.match_time))}</span><span>${esc(f.competition || 'Unknown competition')}${f.country ? ` · ${esc(f.country)}` : ''}</span><span class="schedule-state">${esc(status)}</span>${f.selected_for_ticket ? '<span class="target-pill">IN DAILY TICKET</span>' : ''}</div>
+            <h3 class="schedule-name">${esc(f.match_name || `${f.home_team || ''} vs ${f.away_team || ''}`)}</h3>
+            <div class="schedule-subline">${esc(String(f.analysis_status || 'not analyzed').replace(/_/g, ' '))} · ${f.kickoff_time_known === false ? 'kickoff time unknown' : `kickoff time from ${esc(f.kickoff_time_source || 'API-Sports')}`} · provider fixture ${esc(f.provider_fixture_id || 'unavailable')}</div>
+            ${recommendation}
+            ${optionsMarkup}
+            <div class="schedule-subline">Evidence availability: H2H sample ${h2h || '—'} · home recent form ${homeForm || '—'} · away recent form ${awayForm || '—'} · standings ${stats.league_position_available ? 'available' : 'unavailable'} · injuries/suspensions unavailable.</div>
+            ${links ? `<div class="schedule-links">${links}<small>Owner verification links only; their content is not ingested.</small></div>` : ''}
+            ${expanded ? `<div class="fixture-details"><strong>Coverage and analysis notes</strong>${linkifySafeText(f.analysis_note || 'No supporting statistics note was supplied for this fixture.')}<br>Source: ${esc(f.source || 'API-Sports schedule')}. Missing fields are left unavailable; the evidence rank is not a win probability.</div>` : ''}
+            <button class="why-button" type="button" data-toggle-details="${esc(id)}" aria-expanded="${expanded}">${expanded ? 'Hide details' : 'More coverage details'}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+          </div>
+          <div class="schedule-score">${recommended ? `<strong>${Number(recommended.analysis_score || 0).toFixed(1)}</strong><small>evidence rank<br>not probability</small>` : `<strong>—</strong><small>no qualified<br>market</small>`}</div>
+        </article>`;
+      }
+      function renderCoverageSummary() {
+        const target = document.getElementById('fixture-coverage');
+        if (!target) return;
+        const run = state.latestRun;
+        if (!run) {
+          target.innerHTML = state.source === 'supabase'
+            ? `<strong>No request-anchored fixture snapshot for today.</strong> Run analysis after applying the fixture-board SQL migration; the legacy eligible-pick table alone cannot describe schedule coverage.${state.warning ? `<div class="coverage-warnings">${esc(state.warning)}</div>` : ''}`
+            : '<strong>Coverage not loaded.</strong> Sign in to view the private API-Sports schedule snapshot.';
+          return;
+        }
+        const c = run.coverage || {};
+        const warnings = Array.isArray(run.warnings) ? run.warnings : [];
+        const missingQuotes = Math.max(0, Number(run.fixture_count || 0) - Number(run.quote_fixture_count || 0));
+        const requested = run.requested_at ? formatTriggerTime(run.requested_at) : 'request time unavailable';
+        const completed = run.completed_at ? formatTriggerTime(run.completed_at) : 'completion time unavailable';
+        const sportKeys = Array.isArray(c.odds_selected_sport_keys) ? c.odds_selected_sport_keys : [];
+        const marketPlan = c.odds_market_plan_by_sport && typeof c.odds_market_plan_by_sport === 'object' ? c.odds_market_plan_by_sport : {};
+        const marketPlanLabel = Object.entries(marketPlan).map(([key, markets]) => `${key}: ${(Array.isArray(markets) ? markets : []).join('/')}`).join(' · ');
+        const footballJoin = c.football_join_diagnostics || {};
+        const basketballJoin = c.basketball_join_diagnostics || {};
+        const joinLabel = (name, d) => `${name}: ${Number(d.matched_candidates || 0)}/${Number(d.candidate_count || 0)} joined · team misses ${Number(d.team_names_not_matched || 0)} · time misses ${Number(d.kickoff_time_mismatch || 0)} · ambiguous ${Number(d.ambiguous_fixture_match || 0)}`;
+        target.innerHTML = `<div class="coverage-heading"><strong>Request ${esc(requested)} · EAT slate date ${esc(run.analysis_date || '—')}</strong><span>${esc(run.status || 'unknown')} · completed ${esc(completed)}</span></div>
+          <div class="coverage-grid"><span class="coverage-chip"><b>${Number(run.fixture_count || 0)}</b> API-Sports fixtures</span><span class="coverage-chip"><b>${Number(run.quote_fixture_count || 0)}</b> with quotes · <b>${missingQuotes}</b> no matched quote</span><span class="coverage-chip"><b>${Number(run.market_option_count || 0)}</b> market options</span><span class="coverage-chip"><b>${Number(run.eligible_fixture_count || 0)}</b> fixtures with qualified market</span><span class="coverage-chip"><b>${Number(c.fixtures_with_statistics_features || 0)}</b> with stats features</span><span class="coverage-chip">Ticket build: <b>${esc(c.ticket_build_status || 'unknown')}</b> · ${Number(c.ticket_candidate_leg_count || 0)} candidate legs · ${fmtOdds(c.ticket_candidate_combined_odds || 1)}</span></div>
+          <div><strong>${esc(c.ticket_diagnosis || 'No ticket-build diagnosis was recorded.')}</strong></div>
+          <div>Odds source: ${esc(c.odds_source || 'not recorded')} · selected scope: ${sportKeys.length ? `${sportKeys.length} sport key${sportKeys.length === 1 ? '' : 's'} (${esc(sportKeys.join(', '))})` : 'not recorded'} · events returned ${Number(c.odds_events_returned || 0)} · account header used/remaining ${c.odds_requests_used_header ?? '—'}/${c.odds_requests_remaining_header ?? '—'}. Market families planned by sport: ${marketPlanLabel ? esc(marketPlanLabel) : 'not recorded'}.</div>
+          <div>API-Sports schedule rows: football ${Number(c.football_schedule_rows || 0)}, basketball ${Number(c.basketball_schedule_rows || 0)} · enrichment calls football ${Number(c.api_sports_football_calls || 0)} (remaining estimate ${c.api_sports_football_remaining_estimate ?? '—'}), basketball ${Number(c.api_sports_basketball_calls || 0)} (remaining estimate ${c.api_sports_basketball_remaining_estimate ?? '—'}). ${esc(joinLabel('Football join', footballJoin))} · ${esc(joinLabel('Basketball join', basketballJoin))}. Provider coverage, configured competitions and market rotation limit depth; this is not global coverage of every competition.</div>
+          ${c.limits_note ? `<div>${esc(c.limits_note)}</div>` : ''}
+          ${warnings.length ? `<div class="coverage-warnings"><strong>Run diagnostics:</strong> ${warnings.slice(0,4).map(w => esc(w)).join(' · ')}</div>` : ''}
+          ${state.warning ? `<div class="coverage-warnings"><strong>Dashboard diagnostic:</strong> ${esc(state.warning)}</div>` : ''}`;
+      }
+      function renderAnalysisRunHistory() {
+        const target = document.getElementById('analysis-run-history');
+        if (!target) return;
+        const runs = Array.isArray(state.analysisRuns) ? state.analysisRuns : [];
+        if (!runs.length) {
+          target.innerHTML = '<div class="schedule-empty">No analysis run history is available for the requested period.</div>';
+          return;
+        }
+        target.innerHTML = runs.map(run => {
+          const coverage = run.coverage || {};
+          return `<div class="run-history-row"><div><strong>${esc(run.analysis_date || '—')} EAT</strong><br>${esc(run.status || 'unknown')} · requested ${esc(run.requested_at ? formatTriggerTime(run.requested_at) : 'time unavailable')}</div><div><strong>${Number(run.fixture_count || 0)} schedule fixtures</strong> · ${Number(run.quote_fixture_count || 0)} quoted · ${Number(run.eligible_fixture_count || 0)} qualified · ${Number(coverage.odds_events_returned || 0)} Odds API events</div></div>`;
+        }).join('');
+      }
+      function renderChronologicalAudit() {
+        const target = document.getElementById('analysis-score-audit');
+        if (!target) return;
+        const unique = new Map();
+        for (const row of state.verifiedFixtures || []) {
+          const status = String(row.status || '').toLowerCase();
+          if (!['win','loss'].includes(status)) continue;
+          const kickoff = timeValue(row.match_time);
+          if (!Number.isFinite(kickoff) || kickoff === Number.MAX_SAFE_INTEGER) continue;
+          const created = row.created_at ? timeValue(row.created_at) : 0;
+          if (created && created > kickoff) continue;
+          const score = Number(row.confidence_score);
+          if (!Number.isFinite(score)) continue;
+          const event = String(row.event_id || '').trim();
+          const identity = `${row.sport_type || ''}:${event || `${String(row.match_name || '').toLowerCase()}|${row.match_time}`}`;
+          const current = unique.get(identity);
+          if (!current || score > Number(current.confidence_score || 0)) unique.set(identity, row);
+        }
+        const samples = [...unique.values()].sort((a,b) => timeValue(a.match_time) - timeValue(b.match_time));
+        if (samples.length < 10) {
+          target.innerHTML = `<div class="audit-summary">${samples.length} unique, verified pre-match fixture result${samples.length === 1 ? '' : 's'} available in the 180-day window. A chronological score-band holdout needs more observations; pending, void, and post-kickoff records are excluded. No confidence or win-probability claim is inferred.</div>`;
+          return;
+        }
+        const split = Math.min(samples.length - 1, Math.max(1, Math.floor(samples.length * 0.7)));
+        const earlier = samples.slice(0, split);
+        const later = samples.slice(split);
+        const bands = [
+          { label: '0–69', low: 0, high: 70 },
+          { label: '70–79', low: 70, high: 80 },
+          { label: '80–89', low: 80, high: 90 },
+          { label: '90–100', low: 90, high: 101 }
+        ];
+        const inBand = (row, band) => {
+          const score = Number(row.confidence_score);
+          return score >= band.low && score < band.high;
+        };
+        const record = rows => {
+          const wins = rows.filter(row => String(row.status).toLowerCase() === 'win').length;
+          return `${wins}/${rows.length}`;
+        };
+        const rows = bands.map(band => {
+          const priorBand = earlier.filter(row => inBand(row, band));
+          const holdoutBand = later.filter(row => inBand(row, band));
+          const wins = holdoutBand.filter(row => String(row.status).toLowerCase() === 'win').length;
+          const rate = holdoutBand.length ? `${(wins / holdoutBand.length * 100).toFixed(1)}%` : '—';
+          const nNote = holdoutBand.length > 0 && holdoutBand.length < 10 ? ' · small n' : '';
+          return `<tr><td><strong>${band.label}</strong></td><td>${record(priorBand)}</td><td>${record(holdoutBand)}</td><td>${rate}${nNote}</td></tr>`;
+        }).join('');
+        const holdoutWins = later.filter(row => String(row.status).toLowerCase() === 'win').length;
+        const firstHeldOut = later[0]?.match_time ? formatTriggerTime(later[0].match_time) : '—';
+        target.innerHTML = `<div class="audit-summary">${samples.length} deduplicated verified fixtures · earlier window ${earlier.length} · later chronological holdout ${later.length} · holdout begins ${esc(firstHeldOut)}. Outcome record ${record(later)} (${(holdoutWins / later.length * 100).toFixed(1)}% observed wins); this is descriptive testing of the heuristic rank, not its predicted probability.</div><div class="audit-table-wrap"><table class="audit-table"><thead><tr><th>Heuristic score band</th><th>Earlier W/N</th><th>Later W/N</th><th>Later observed win rate</th></tr></thead><tbody>${rows}</tbody></table></div><div class="audit-footnote">Chronological split uses match time, not a random shuffle. One highest-score prediction is counted per fixture to reduce duplicate-market correlation. Pending and void records are excluded. These historical rates do not calibrate or guarantee future outcomes; score thresholds are not automatically retuned.</div>`;
+      }
       function renderFixtureLists() {
         const list = filteredFixtures();
-        const empty = `<div class="empty-state"><strong>${state.source === 'supabase' && !state.analysisRecordLoaded ? 'No daily analysis record yet' : 'No eligible fixtures found'}</strong><p>${state.source === 'supabase' ? (state.analysisRecordLoaded ? 'No evidence-backed candidates are available for today. No ticket was forced.' : 'No manual analysis run has saved a record for today. Use the request button when you are ready.') : 'Sign in to load the private daily analysis.'}</p></div>`;
-        const full = list.length ? list.map(fixtureCard).join('') : empty;
+        const schedule = filteredScheduleMatches();
+        const overviewEmpty = `<div class="empty-state"><strong>${state.source === 'supabase' && !state.analysisRecordLoaded ? 'No daily analysis record yet' : 'No evidence-qualified picks'}</strong><p>${state.source === 'supabase' ? (state.analysisRecordLoaded ? `The daily schedule has ${state.scheduleMatches.length} visible fixture(s); no market passed the existing evidence gates. Check the fixture board for quote and data gaps. No ticket was forced.` : 'No manual analysis run has saved a record for today. Use the request button when you are ready.') : 'Sign in to load the private daily analysis.'}</p></div>`;
+        const scheduleEmpty = !state.latestRun
+          ? `<div class="schedule-empty">No full fixture snapshot for today yet. Request an analysis run to discover the API-Sports schedule before Odds API filtering.</div>`
+          : state.scheduleMatches.length === 0
+            ? `<div class="schedule-empty"><strong>The run recorded zero normalized schedule fixtures.</strong><br>Check API-Sports access, quota and coverage diagnostics above. This is a data-discovery gap, not confirmation that there are no matches.</div>`
+            : `<div class="schedule-empty">No schedule fixtures match the selected sport or search filter.</div>`;
         const overviewList = list.slice(0, 5);
-        document.getElementById('fixture-list-overview').innerHTML = overviewList.length ? overviewList.map(fixtureCard).join('') : empty;
-        document.getElementById('fixture-list-full').innerHTML = full;
+        document.getElementById('fixture-list-overview').innerHTML = overviewList.length ? overviewList.map(fixtureCard).join('') : overviewEmpty;
+        document.getElementById('fixture-list-full').innerHTML = schedule.length ? schedule.map(scheduleCard).join('') : scheduleEmpty;
         const count = document.getElementById('fixture-count-pill');
-        count.textContent = `${list.length} ${list.length === 1 ? 'FIXTURE' : 'FIXTURES'}`;
+        count.textContent = `${schedule.length} ${schedule.length === 1 ? 'FIXTURE' : 'FIXTURES'}`;
+        renderCoverageSummary();
+        renderAnalysisRunHistory();
+        renderChronologicalAudit();
         document.querySelectorAll('[data-sport-filter]').forEach(b => b.classList.toggle('active', b.dataset.sportFilter === state.activeSport));
         document.querySelectorAll('[data-sport]').forEach(b => b.classList.toggle('active', b.dataset.sport === state.activeSport));
         document.querySelectorAll('[data-sort-select]').forEach(s => s.value = state.sort);
@@ -868,11 +1077,13 @@
       function renderStats() {
         const eligible = state.fixtures.filter(isEligible);
         const avg = eligible.length ? eligible.reduce((sum,f) => sum + (Number(f.confidence_score) || 0),0) / eligible.length : 0;
-        document.getElementById('stat-fixtures').textContent = String(state.fixtures.length);
-        document.getElementById('stat-eligible').textContent = String(eligible.length);
+        document.getElementById('stat-fixtures').textContent = String(state.latestRun ? (state.latestRun.fixture_count || 0) : state.scheduleMatches.length);
+        document.getElementById('stat-eligible').textContent = String(state.latestRun ? (state.latestRun.eligible_fixture_count || 0) : eligible.length);
         document.getElementById('stat-score').innerHTML = eligible.length ? `${avg.toFixed(1)}<span style="font-size:12px;color:#84919a">/100</span>` : '—';
-        const sports = new Set(eligible.map(f => f.sport_type));
-        document.getElementById('stat-fixtures-foot').textContent = eligible.length ? `Across ${sports.size} sport${sports.size === 1 ? '' : 's'}` : 'No eligible fixtures today';
+        const sports = new Set(state.scheduleMatches.map(f => f.sport_type));
+        document.getElementById('stat-fixtures-foot').textContent = state.latestRun
+          ? `API-Sports schedule · ${sports.size} sport${sports.size === 1 ? '' : 's'} · request-anchored`
+          : 'No schedule snapshot yet';
       }
       function showToast(message) {
         const el = document.getElementById('toast');
@@ -991,7 +1202,7 @@
             reason: 'cooldown',
             next_allowed_at: payload.next_allowed_at || null
           };
-          state.triggerNotice = payload.message || 'Analysis request accepted. Refresh this dashboard in a few minutes.';
+          state.triggerNotice = `${payload.message || 'Analysis request accepted. Refresh this dashboard in a few minutes.'}${payload.requested_at ? ` Request captured at ${formatTriggerTime(payload.requested_at)}.` : ''}`;
           state.triggerNoticeType = 'success';
           showToast('Manual analysis request sent.');
         } catch (error) {
@@ -1038,15 +1249,18 @@
         pill.classList.remove('live','error');
         if (status === 'supabase') {
           pill.classList.add('live');
-          if (state.fixtures.length) {
-            text.textContent = 'PRIVATE · LIVE';
+          if (state.scheduleMatches.length) {
+            text.textContent = 'PRIVATE · SCHEDULE LOADED';
+            heroMode.textContent = 'FULL FIXTURE BOARD';
+          } else if (state.fixtures.length) {
+            text.textContent = 'PRIVATE · PICKS LOADED';
             heroMode.textContent = 'AUTHENTICATED DATA';
           } else if (!state.analysisRecordLoaded) {
             text.textContent = 'PRIVATE · NO RUN TODAY';
             heroMode.textContent = 'WAITING FOR MANUAL RUN';
           } else {
-            text.textContent = 'PRIVATE · NO PICKS';
-            heroMode.textContent = 'NO VERIFIED PICKS';
+            text.textContent = 'PRIVATE · NO FIXTURES';
+            heroMode.textContent = 'CHECK COVERAGE DIAGNOSTICS';
           }
         } else if (status === 'error') {
           pill.classList.add('error'); text.textContent = 'LIVE DATA UNAVAILABLE'; heroMode.textContent = 'NO VERIFIED DATA';
@@ -1054,7 +1268,7 @@
           text.textContent = 'SIGN IN REQUIRED'; heroMode.textContent = 'PRIVATE WORKSPACE';
         }
         const lastFixtureUpdate = state.fixtures.map(row => row.updated_at).filter(Boolean).sort().at(-1);
-        const analysisUpdatedAt = state.accumulator?.updated_at || lastFixtureUpdate || null;
+        const analysisUpdatedAt = state.latestRun?.completed_at || state.latestRun?.requested_at || state.accumulator?.updated_at || lastFixtureUpdate || null;
         const sourceTime = analysisUpdatedAt || state.lastRefreshed;
         let freshnessLabel = status === 'error' ? 'No successful refresh yet' : status === 'supabase' ? 'No analysis record yet' : 'Not connected';
         if (sourceTime) {
@@ -1158,6 +1372,18 @@
         const payload = await response.json();
         return Array.isArray(payload) ? payload : [];
       }
+      async function restGetAll(table, query, session, pageSize=500) {
+        const all = [];
+        for (let offset = 0; offset < 50000; offset += pageSize) {
+          const page = new URLSearchParams(query);
+          page.set('limit', String(pageSize));
+          page.set('offset', String(offset));
+          const rows = await restGet(table, page, session);
+          all.push(...rows);
+          if (rows.length < pageSize) return all;
+        }
+        throw new Error(`Private ${table} page limit reached; fixture coverage may be incomplete.`);
+      }
       function getTodayBounds() {
         const day = eastAfricaParts().key;
         const start = new Date(`${day}T00:00:00+03:00`).toISOString();
@@ -1193,6 +1419,12 @@
             order: 'analysis_date.desc',
             limit: '100'
           });
+          const runHistoryQuery = new URLSearchParams({
+            select: 'id,analysis_date,requested_at,completed_at,status,source_scope,fixture_count,quote_fixture_count,market_option_count,eligible_fixture_count,coverage,warnings',
+            analysis_date: `gte.${historyDay}`,
+            order: 'requested_at.desc',
+            limit: '100'
+          });
           const [fixtures, accumulators, history] = await Promise.all([
             restGet('daily_fixtures', fixturesQuery, session),
             restGet('daily_accumulators', accumulatorQuery, session),
@@ -1200,7 +1432,40 @@
           ]);
           state.fixtures = fixtures;
           state.history = history;
-          state.analysisRecordLoaded = accumulators.length > 0;
+          state.analysisRuns = [];
+          state.latestRun = null;
+          state.scheduleMatches = [];
+          state.verifiedFixtures = [];
+          state.warning = '';
+          try {
+            state.analysisRuns = await restGet('analysis_runs', runHistoryQuery, session);
+            state.latestRun = state.analysisRuns.find(run => run.analysis_date === day) || null;
+            if (state.latestRun) {
+              const scheduleQuery = new URLSearchParams({
+                select: 'id,run_id,analysis_date,sport_type,provider_fixture_id,provider_home_team_id,provider_away_team_id,provider_league_id,provider_season,match_name,home_team,away_team,match_time,kickoff_time_known,kickoff_time_source,competition,country,round,provider_status,fixture_state,analysis_status,market_options,recommended_market,recommended_score,selected_for_ticket,analysis_note,statistics_summary,forebet_url,forebet_injuries_url,statarea_url,source',
+                run_id: `eq.${state.latestRun.id}`,
+                order: 'match_time.asc'
+              });
+              state.scheduleMatches = await restGetAll('analysis_fixtures', scheduleQuery, session);
+            }
+          } catch (boardError) {
+            state.warning = `Full schedule board unavailable: ${boardError.message || 'apply the fixture-board SQL migration.'}`;
+            state.scheduleMatches = [];
+          }
+          const auditStart = new Date(Date.now() - 180*86400000).toISOString();
+          const auditQuery = new URLSearchParams({
+            select: 'id,sport_type,event_id,match_name,match_time,market_key,confidence_score,status,created_at',
+            match_time: `gte.${auditStart}`,
+            status: 'in.(win,loss)',
+            order: 'match_time.asc'
+          });
+          try {
+            state.verifiedFixtures = await restGetAll('daily_fixtures', auditQuery, session);
+          } catch (auditError) {
+            state.verifiedFixtures = [];
+            state.warning = `${state.warning ? `${state.warning} ` : ''}Verified-result score audit unavailable: ${auditError.message || 'history query failed.'}`;
+          }
+          state.analysisRecordLoaded = accumulators.length > 0 || Boolean(state.latestRun);
           state.accumulator = accumulators[0] || { analysis_date: day, status: 'no_ticket', total_odds: 1, legs: [] };
           if (state.accumulator.status === 'ready') {
             const legsQuery = new URLSearchParams({
@@ -1215,7 +1480,7 @@
             state.selectedIds = new Set();
           }
           state.lastRefreshed = new Date().toISOString();
-          setSource('supabase');
+          setSource('supabase', state.warning);
           showPrivateApp();
           renderAll();
           if (state.activeView === 'results') renderHistory();
@@ -1225,6 +1490,10 @@
         } catch (error) {
           console.error(error);
           state.fixtures = [];
+          state.scheduleMatches = [];
+          state.analysisRuns = [];
+          state.latestRun = null;
+          state.verifiedFixtures = [];
           state.analysisRecordLoaded = false;
           state.accumulator = { status: 'no_ticket', total_odds: 1, legs: [] };
           state.selectedIds = new Set();
@@ -1244,6 +1513,10 @@
         }
         clearSession();
         state.fixtures = [];
+        state.scheduleMatches = [];
+        state.analysisRuns = [];
+        state.latestRun = null;
+        state.verifiedFixtures = [];
         state.accumulator = null;
         state.selectedIds = new Set();
         state.history = [];
@@ -1328,12 +1601,22 @@
         catch { const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); showToast('Ticket summary copied.'); }
       }
       function exportFixtures() {
-        const headers = ['sport_type','match_name','match_time_EAT','market_name','picked_odds','analysis_score','status','analysis_note'];
-        const rows = state.fixtures.map(f => [f.sport_type, f.match_name, fmtTime(f.match_time), f.market_name, fmtOdds(f.picked_odds), Number(f.confidence_score).toFixed(1), f.status || 'pending', f.analysis_note || '']);
+        const useBoard = Boolean(state.latestRun);
+        const headers = useBoard
+          ? ['sport_type','provider_fixture_id','match_name','competition','country','match_time_EAT','fixture_state','analysis_status','recommended_market','recommended_selection','recommended_odds','evidence_rank_not_probability','available_market_options','statistics_summary','analysis_note']
+          : ['sport_type','match_name','match_time_EAT','market_name','picked_odds','analysis_score','status','analysis_note'];
+        const rows = useBoard
+          ? state.scheduleMatches.map(f => [
+              f.sport_type, f.provider_fixture_id, f.match_name, f.competition, f.country, fmtTime(f.match_time), f.fixture_state, f.analysis_status,
+              f.recommended_market?.market_name || '', f.recommended_market?.selection_name || '', f.recommended_market?.picked_odds ?? '', f.recommended_score ?? '',
+              (f.market_options || []).map(m => `${m.market_name}: ${m.selection_name} @ ${m.picked_odds ?? 'n/a'} (${m.evidence_status}; ${m.odds_updated_at || 'timestamp n/a'})`).join(' | '),
+              JSON.stringify(f.statistics_summary || {}), f.analysis_note || ''
+            ])
+          : state.fixtures.map(f => [f.sport_type, f.match_name, fmtTime(f.match_time), f.market_name, fmtOdds(f.picked_odds), Number(f.confidence_score).toFixed(1), f.status || 'pending', f.analysis_note || '']);
         const csv = [headers, ...rows].map(row => row.map(v => `"${String(v ?? '').replace(/"/g,'""')}"`).join(',')).join('\r\n');
         const blob = new Blob(['\ufeff'+csv], { type:'text/csv;charset=utf-8' });
         const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `kimathy-fixtures-${eastAfricaParts().key}.csv`; a.click(); URL.revokeObjectURL(a.href);
-        showToast('Fixture list exported as CSV.');
+        showToast(useBoard ? 'Full fixture board exported as CSV.' : 'Eligible fixture list exported as CSV.');
       }
       function renderAll() {
         renderStats(); renderFixtureLists(); renderTickets();

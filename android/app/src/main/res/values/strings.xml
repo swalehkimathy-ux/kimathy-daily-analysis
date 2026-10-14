@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Kimathy Daily Analysis</string>
+    <string name="title_activity_main">Kimathy Daily Analysis</string>
+    <string name="package_name">com.kimathy.dailyanalysis</string>
+    <string name="custom_url_scheme">com.kimathy.dailyanalysis</string>
+</resources>

@@ -1,0 +1,22 @@
+{
+  "name": "kimathy-daily-analysis-android",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Private Kimathy Daily Analysis dashboard packaged with Capacitor for Android.",
+  "scripts": {
+    "build": "node scripts/build-web.mjs",
+    "android:sync": "cap sync android",
+    "android:open": "cap open android",
+    "test:pipeline": "python -m unittest discover -s pipeline -v"
+  },
+  "dependencies": {
+    "@capacitor/android": "8.5.3",
+    "@capacitor/core": "8.5.3"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "8.5.3"
+  },
+  "overrides": {
+    "uuid": "^11.1.1"
+  }
+}

@@ -11,6 +11,7 @@ appear in logs.
 from __future__ import annotations
 
 import re
+import time
 import unicodedata
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
@@ -25,6 +26,9 @@ FOOTBALL_BASE = "https://v3.football.api-sports.io"
 BASKETBALL_BASE = "https://v1.basketball.api-sports.io"
 EAT = ZoneInfo("Africa/Dar_es_Salaam")
 DEFAULT_RUN_LIMIT = 60
+# API-FOOTBALL Free-plan rate limit is 10 requests/minute. Pace the production
+# client at a 6.2-second minimum start-to-start interval (including /status).
+FREE_PLAN_MIN_REQUEST_INTERVAL_SECONDS = 6.2
 FOOTBALL_STANDINGS_LIMIT = 8
 # Reserve within the 60-call enrichment ceiling: one schedule + up to 8 standings
 # + 27 H2H + 24 recent-team-form calls. Provider quota may lower this further.
@@ -141,6 +145,7 @@ class APISportsClient:
         max_run_calls: int = DEFAULT_RUN_LIMIT,
         timeout: int = 30,
         session: Any = None,
+        min_request_interval_seconds: float | None = None,
     ):
         product = str(product or "").strip().lower()
         if product not in {"football", "basketball"}:
@@ -154,10 +159,27 @@ class APISportsClient:
         self.max_run_calls = max(1, int(max_run_calls))
         self.timeout = max(1, int(timeout))
         self.session = session if session is not None else requests
+        if min_request_interval_seconds is None:
+            # Dependency-injected fake sessions are used in offline tests, where
+            # waiting would only slow the suite. The live runner uses requests.
+            min_request_interval_seconds = (
+                0.0 if session is not None else FREE_PLAN_MIN_REQUEST_INTERVAL_SECONDS
+            )
+        self.min_request_interval_seconds = max(0.0, float(min_request_interval_seconds))
+        self._last_request_started_at: float | None = None
         self.calls_used = 0
         self.account_remaining: int | None = None
         self.call_budget = self.max_run_calls
         self.status_checked = False
+
+    def _pace_request(self) -> None:
+        """Keep requests below the API-Sports Free-plan 10/minute ceiling."""
+        now = time.monotonic()
+        if self._last_request_started_at is not None:
+            remaining = self.min_request_interval_seconds - (now - self._last_request_started_at)
+            if remaining > 0:
+                time.sleep(remaining)
+        self._last_request_started_at = time.monotonic()
 
     def _request_json(
         self,
@@ -176,6 +198,7 @@ class APISportsClient:
                     f"API-Sports {self.product}: safe per-run/daily request budget is exhausted."
                 )
 
+        self._pace_request()
         try:
             response = self.session.get(
                 f"{self.base_url}/{endpoint.lstrip('/')}",
@@ -197,7 +220,19 @@ class APISportsClient:
             if status in {401, 403}:
                 message = f"API-Sports {self.product} rejected the key/access (HTTP {status}); check the provider dashboard privately."
             elif status == 429:
-                message = f"API-Sports {self.product} rate/daily quota was reached (HTTP 429)."
+                provider_details = ""
+                try:
+                    error_payload = response.json()
+                    if isinstance(error_payload, dict) and error_payload.get("errors"):
+                        provider_details = _safe_error_summary(error_payload.get("errors"))
+                except Exception:
+                    provider_details = ""
+                message = (
+                    f"API-Sports {self.product} rejected the request (HTTP 429); "
+                    f"sanitized provider details: {provider_details}."
+                    if provider_details else
+                    f"API-Sports {self.product} rate/daily quota was reached (HTTP 429)."
+                )
             else:
                 message = f"API-Sports {self.product} request failed (HTTP {status}); response details were suppressed."
             raise APISportsError(message, status_code=status)

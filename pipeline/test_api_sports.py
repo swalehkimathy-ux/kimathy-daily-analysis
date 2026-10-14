@@ -2,9 +2,17 @@ from __future__ import annotations
 
 import unittest
 from datetime import datetime, timezone
+from unittest.mock import patch
 
 from engine import prepare_fixture
-from providers.api_sports import enrich_odds_candidates, settle_pending_fixtures, _result_outcome
+from providers.api_sports import (
+    APISportsClient,
+    APISportsError,
+    FREE_PLAN_MIN_REQUEST_INTERVAL_SECONDS,
+    enrich_odds_candidates,
+    settle_pending_fixtures,
+    _result_outcome,
+)
 
 
 class FakeResponse:
@@ -204,6 +212,45 @@ def basketball_history_payloads():
         )
     away_history.append(basketball_game(4999, "2026-09-10T18:00:00Z", 201, 20, 90, 100))
     return {"10": {"response": home_history}, "20": {"response": away_history}}
+
+
+class APISportsClientTests(unittest.TestCase):
+    def test_live_client_defaults_to_free_plan_safe_request_spacing(self):
+        client = APISportsClient("football", "offline-test-key")
+        self.assertEqual(
+            client.min_request_interval_seconds,
+            FREE_PLAN_MIN_REQUEST_INTERVAL_SECONDS,
+        )
+        self.assertGreaterEqual(client.min_request_interval_seconds, 6.0)
+
+    def test_rate_limiter_waits_between_requests_when_needed(self):
+        session = FakeSession(lambda call: FakeResponse({"response": {}}))
+        client = APISportsClient(
+            "football", "offline-test-key", session=session,
+            min_request_interval_seconds=6.2,
+        )
+        with (
+            patch("providers.api_sports.time.monotonic", side_effect=[0.0, 0.0, 1.0, 1.0]),
+            patch("providers.api_sports.time.sleep") as sleep,
+        ):
+            client._request_json("status", billable=False)
+            client._request_json("status", billable=False)
+        sleep.assert_called_once()
+        self.assertAlmostEqual(sleep.call_args.args[0], 5.2)
+
+    def test_http_429_surfaces_sanitized_provider_detail(self):
+        secret = "abcdefghijklmnopqrstuvwx1234567890"
+        session = FakeSession(lambda call: FakeResponse({
+            "errors": {"rateLimit": f"Too many requests; x-apisports-key={secret}"}
+        }, status_code=429))
+        client = APISportsClient("football", secret, session=session)
+        with self.assertRaises(APISportsError) as context:
+            client._request_json("fixtures", billable=False)
+        message = str(context.exception)
+        self.assertIn("HTTP 429", message)
+        self.assertIn("rateLimit", message)
+        self.assertIn("<redacted>", message)
+        self.assertNotIn(secret, message)
 
 
 class APISportsEnrichmentTests(unittest.TestCase):

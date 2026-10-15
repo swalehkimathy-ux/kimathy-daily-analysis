@@ -1,13 +1,13 @@
 # Chanzo cha data kinachofaa kwa Kimathy
 
-**Imesasishwa: 11 Oktoba 2026.** App haina ratiba ya automatic: run huanzishwa kwa kubonyeza kitufe, na ombi moja tu huruhusiwa kwa tarehe ya Tanzania (Africa/Dar_es_Salaam), likifunguka upya saa 00:00; maombi yaliyo karibu na usiku wa manane yanaweza kuwa chini ya saa 24 tofauti. Lengo ni **angalau accumulators 20 zilizoshinda kwa mwezi**, si tiketi 20 tu zilizotolewa; hili ni lengo tu, si ahadi. Run inaweza kutoa hakuna ticket ikiwa odds au ushahidi wa takwimu hautoshi—hakuna pick inayolazimishwa. Ticket moja inalenga odds jumla **1.50 hadi chini ya 1.90**.
+**Imesasishwa: 14 Oktoba 2026.** App haina ratiba ya automatic: run huanzishwa kwa kubonyeza kitufe, na ombi moja tu huruhusiwa kwa tarehe ya Tanzania (Africa/Dar_es_Salaam), likifunguka upya saa 00:00; maombi yaliyo karibu na usiku wa manane yanaweza kuwa chini ya saa 24 tofauti. Hakuna idadi ya ushindi inayodaiwa au kuahidiwa. Run inaweza kutoa hakuna ticket ikiwa odds au ushahidi wa takwimu hautoshi—hakuna pick inayolazimishwa. Ticket moja inalenga odds jumla **1.50 hadi chini ya 1.90**.
 
 ## Chanzo cha odds na stats
 
 | Chanzo | Kinachotumika | Mipaka muhimu | Uamuzi wa sasa |
 |---|---|---|---|
 | [The Odds API](https://the-odds-api.com/) | Odds za bookmaker kupitia API rasmi; default region ni EU. | Credits hutumika kulingana na markets na regions zilizoombwa. Free allowance inaweza kubadilika; connector husoma headers za quota. Coverage ya market/bookmaker hutofautiana kwa ligi. Soccer `spreads` ya source ni two-way point spread, si European 3-way handicap; haijabadilishwa jina wala kukisia `h2h_3_way`. | Connector inachagua hadi competitions 10 (soccer 8 na basketball 2). Markets mbili za soccer huzunguka kwa ligi/siku kati ya totals, BTTS, double chance, h2h (1X2) na `spreads`; basketball huomba h2h, totals na spreads. Hard cap, ikijumuisha retries, ni **22 market credits/run** kwa region moja (16 soccer + 6 basketball chini ya full plan). |
-| [API-Sports / API-Football](https://api-sports.io/) | Football fixtures, standings, head-to-head, recent team scorelines na matokeo ya final. | Free plan iliyoonyeshwa na provider: hadi requests 100/siku kwa kila API; coverage hutegemea ligi/season. Baadhi ya matumizi au uchapishaji vinaweza kuhitaji ruhusa za ziada. | Hutumika kuoanisha mechi; totals/spreads zinahitaji H2H 5 na hutumia pia form ya mechi 5 za hivi karibuni kwa kila timu pale data ipo; standings hutumika kwa double chance. Matokeo ya zamani husettled pale fixture/final score vinapolingana. |
+| [API-Sports / API-Football](https://api-sports.io/) | Football fixtures, standings, head-to-head, recent overall/home-away team scorelines na matokeo ya final. | Free plan iliyoonyeshwa na provider: hadi requests 100/siku kwa kila API; coverage hutegemea ligi/season. Baadhi ya matumizi au uchapishaji vinaweza kuhitaji ruhusa za ziada. | Ratiba huunda fixture universe kabla ya kuchuja kwa odds. Form huchukuliwa kwa markets husika bila kusubiri H2H, ndani ya cap ya requests; routes huru hutumia sampuli/viwango vya soko vilivyoainishwa hapa chini. Matokeo ya zamani husettled pale fixture/final score vinapolingana. |
 | [API-Sports / API-Basketball](https://api-sports.io/) | Ratiba, game history na score za basketball. | Coverage hutofautiana kwa ligi. Hii ni data ya stats/results, si odds za bookmaker. | Hutumika kwa home moneyline, totals, handicap na settlement pale data ya game ipo. |
 | [TheSportsDB](https://www.thesportsdb.com/) | Metadata/ratiba na baadhi ya matokeo kupitia API yake rasmi. | Haina bookmaker odds; free plan/coverage ni chache. Terms zinasema tumia API rasmi, si kuscrape tovuti. | Haijaunganishwa kwa picks; inaweza kutathminiwa kama supplement ya ratiba pekee. |
 | [football-data.org](https://www.football-data.org/documentation/api) | Ratiba, results na competition data ya football. | Football pekee; free plan inahitaji account/token na attribution. | Haijaunganishwa kwa sasa. API-Sports ndiyo stats/results source inayotumika. |
@@ -22,24 +22,26 @@ Hii si AI sentiment model: keyword tags zinaweza kukosea muktadha. RSS signal ha
 
 ## Markets zinazounganishwa sasa
 
-- **Football:** totals Over/Under 0.5, 1.5 au 2.5; BTTS Yes/No; double chance **Home or Draw (1X)**; direct 1X2 (home win, draw, away win); na **two-way soccer spread** yenye upande/line iliyochukuliwa kutoka `spreads`. Market name huiweka wazi kuwa ni two-way; European 3-way handicap haijaunganishwa kwa sababu source iliyopo haijaithibitisha. Quarter-lines hazichukuliwi. Direct 1X2 inahitaji quote ya kweli yenye outcomes zote tatu; odds ziwe 1.05–1.80 na angalau 4 kati ya H2H 5 ziunge mkono outcome iliyochaguliwa.
+- **Football:** totals Over/Under 0.5, 1.5 au 2.5; BTTS Yes/No; double chance **Home or Draw (1X)**; direct 1X2 (home win, draw, away win); na **two-way soccer spread** yenye upande/line iliyochukuliwa kutoka `spreads`. Market name huiweka wazi kuwa ni two-way; European 3-way handicap haijaunganishwa kwa sababu source iliyopo haijaithibitisha. Quarter-lines hazichukuliwi. Direct 1X2 inahitaji quote ya kweli yenye outcomes zote tatu na odds 1.05–1.80; H2H 4/5 au route huru ya venue form inaweza kusaidia kulingana na vigezo hapa chini.
 - **Basketball:** home moneyline, totals Over/Under kwa line halisi, na handicap/spread kwa upande na line halisi.
 - **Tennis:** imezimwa kwa muda kwenye odds requests kwa sababu hatuna stats source inayokubalika ya ranking/surface/form. Odds peke yake hazitoshi.
 - **Corners, cards na cricket:** hazijaunganishwa. Coverage ya odds pamoja na stats za market hizo haijathibitishwa.
 
 ## Vigezo vya ushahidi
 
-1. **Football 1X:** standings ziwe kamili (angalau timu 10), timu zote mbili ziwe na angalau mechi 5 za ligi, nyumbani iwe top 3 na ugenini iwe bottom 5.
-2. **Football direct 1X2:** kwenye H2H 5 zilizokamilika, angalau 4 ziwe na outcome ileile ya matokeo yaliyonukuliwa (home win, draw au away win); odds lazima ziwe ndani ya 1.05–1.80.
-3. **Football totals:** mechi 5 zilizokamilika za head-to-head; angalau 4 kati ya 5 zilingane na line na direction inayochaguliwa. Pia timu zote mbili zihitaji scorelines 5 za hivi karibuni; direction iliyochaguliwa iwe na wastani wa hit rate angalau 60% kati ya samples mbili na hakuna timu iliyo chini ya 40%.
-4. **Football two-way spread:** line kamili ya whole/half-goal, H2H 5 zilizokamilika na angalau 4 covers kwa upande uliochaguliwa. Kila timu ihitaji form ya mechi 5: selected side cover rate angalau 70%, opponent cover rate isizidi 30% kwenye line iliyoakisiwa. Hii si European 3-way handicap.
-5. **Football BTTS:** mechi 5 za head-to-head; angalau 4 kati ya 5 zilingane na Yes au No.
+Sampuli ni hadi mechi 5 za mwisho zilizokamilika kabla ya kickoff; venue split hutumia mechi za timu hiyo kwenye uwanja/nafasi husika. Ikiwa sampuli ni fupi, route hiyo hukataliwa na board huonyesha idadi ya data iliyopatikana. Vigezo vya H2H vilivyopo vinaendelea, lakini H2H si lazima pale route huru ya form inapokidhi kiwango chake kali zaidi.
+
+1. **Football direct 1X2:** H2H outcome husika >=4/5; au route huru ya venue form: home win inahitaji home team ishinde >=4/5 nyumbani na opponent ipoteze >=3/5 ugenini; away win ni kinyume; draw inahitaji kila upande utoe sare >=3/5 kwenye venue split yake.
+2. **Football 1X (Home or Draw):** mojawapo ya: standings route (table ya timu >=10, kila team imecheza >=5 league matches, home top 3 na away bottom 5); H2H home-win-plus-draw >=4/5; au venue form huru (home team isishindwe >=4/5 nyumbani na opponent ipoteze >=3/5 ugenini).
+3. **Football totals:** route ya awali: H2H >=4/5 kwenye line/direction halisi pamoja na form ya mechi 5 kwa kila timu, hit rate ya direction husika >=40% kwa kila timu na wastani wa timu mbili >=60%. Bila H2H ya kutosha, route huru inahitaji mechi 5 kila timu, kila hit rate >=60% na wastani >=70%.
+4. **Football two-way spread:** route ya awali: H2H 4/5 kwenye line kamili pamoja na sampuli 5; selected cover >=70%, opponent mirrored-line cover <=30%. Bila H2H ya kutosha, route huru inahitaji line ileile iliyonukuliwa, sampuli 5 na selected cover >=80% dhidi ya opponent <=20%. Si European 3-way handicap; quarter-lines hazichukuliwi.
+5. **Football BTTS Yes/No:** H2H ya upande uliochaguliwa >=4/5; au form huru ya mechi 5 kwa kila timu ambapo BTTS Yes hutokea >=3/5 kwa Yes, au BTTS No >=3/5 kwa No.
 6. **Basketball moneyline:** home team iwe na angalau mechi 5 za hivi karibuni nyumbani na win rate angalau 80%; opponent awe na sample ya angalau mechi 5 za ugenini na losing streak ya sasa ya angalau 5.
 7. **Basketball totals:** sample ya angalau mechi 5 kwa home team nyumbani na away team ugenini; kila sample iwe na hit rate angalau 70% kwenye line/direction hiyo hiyo.
 8. **Basketball handicap:** angalau mechi 5 kwa kila sample inayotumika; selected side iwe na cover rate angalau 70% na upande pinzani usizidi 30% kwenye handicap line hiyo.
 9. Ticket haiwezi kuweka markets mbili kutoka mechi moja. Ikiwa stats zimekosekana, majina/muda havilingani au fixture ni ambiguous, pick inakataliwa.
 
-Hizi ni vigezo vya kuchuja, si ushahidi wa uhakika kwamba pick itashinda. Alama 0–100 ni ranking heuristic, si probability iliyocalibrate.
+Board huonyesha route iliyotumika au sababu ya kukataliwa kwa kila market. Hizi ni vigezo vya kuchuja, si ushahidi wa uhakika kwamba pick itashinda. Alama 0–100 ni ranking heuristic, si probability iliyocalibrate.
 
 ## Matumizi ya credits na requests
 
@@ -61,4 +63,4 @@ Dashboard inaonyesha win rate na “paper ROI” kwa dhana ya stake ya unit moja
 - Football Whispers tips si bookmaker odds; hakuna scraper iliyounganishwa.
 - Hatutumii login/CAPTCHA/proxy bypass, private endpoints, wala kuendelea kupiga requests baada ya 403/429.
 
-**Live-test ya awali (toleo kabla ya upanuzi huu):** The Odds API ilirudisha events 144 na odds candidates 13, ikitumia credits 12 na kuripoti 488 zilizobaki. API-Sports ilifanya schedule call moja ya basketball lakini haiku-match candidate; hakuna candidate iliyokuwa na ushahidi wa stats, hivyo hakuna ticket iliyotengenezwa. Mabadiliko ya matching diagnostics na markets hapo juu bado yanahitaji kuthibitishwa kwenye run yako inayofuata; offline mock tests haziwezi kuthibitisha coverage ya account yako.
+**Live-test ya awali (toleo la zamani):** The Odds API ilirudisha events 144 na odds candidates 13, ikitumia credits 12 na kuripoti 488 zilizobaki. API-Sports ilifanya schedule call moja ya basketball lakini haiku-match candidate; hakuna candidate iliyokuwa na ushahidi wa stats, hivyo hakuna ticket iliyotengenezwa. Hii si uthibitisho wa routes mpya. Mabadiliko haya yamejaribiwa kwa offline mocks pekee; hakuna live provider run ya mabadiliko haya iliyofanywa, na live coverage ya account yako bado haijathibitishwa.

@@ -1,6 +1,6 @@
 import unittest
 
-from engine import build_accumulator, prepare_fixture
+from engine import build_accumulator, football_evidence_assessment, prepare_fixture
 
 
 def football_candidate(name, odd=1.12, market="double_chance_1x", features=None, event_id=None):
@@ -44,6 +44,21 @@ class EligibilityTests(unittest.TestCase):
         raw["features"].pop("home_league_matches")
         self.assertIsNone(prepare_fixture(raw))
 
+    def test_double_chance_h2h_route_requires_four_home_or_draw_results(self):
+        raw = football_candidate(
+            "Home vs Away", 1.12, "double_chance_1x",
+            {
+                "historical_1x2_sample": 5,
+                "historical_home_win_count": 3,
+                "historical_draw_count": 1,
+                "historical_away_win_count": 1,
+            },
+        )
+        self.assertIsNotNone(prepare_fixture(raw))
+        self.assertIn("H2H 1X", football_evidence_assessment(raw)["route"])
+        raw["features"]["historical_draw_count"] = 0
+        self.assertIsNone(prepare_fixture(raw))
+
     def test_football_direct_1x2_winner_requires_four_of_five_h2h_results(self):
         raw = football_candidate(
             "Home vs Away", 1.62, "home_win_1x2",
@@ -67,6 +82,7 @@ class EligibilityTests(unittest.TestCase):
                 "selected_spread_form_rate": 0.80,
                 "opponent_spread_form_sample": 5,
                 "opponent_spread_form_rate": 0.20,
+                "selected_spread_form_line": "-0.5",
             },
         )
         raw["market_name"] = "Two-way Soccer Spread · Home (-0.5)"
@@ -114,6 +130,106 @@ class EligibilityTests(unittest.TestCase):
         raw["features"]["away_form_over_1_5_rate"] = 0.60
         raw["market_key"] = "over_2_5_goals"
         raw["features"]["historical_over_2_5_count"] = 3
+        self.assertIsNone(prepare_fixture(raw))
+
+    def test_direct_1x2_can_qualify_from_independent_venue_form_without_h2h(self):
+        raw = football_candidate(
+            "Home vs Away", 1.62, "home_win_1x2",
+            {
+                "home_team_home_games_sample": 5,
+                "home_team_home_win_rate": 0.80,
+                "home_team_home_draw_rate": 0.00,
+                "home_team_home_loss_rate": 0.20,
+                "away_team_away_games_sample": 5,
+                "away_team_away_win_rate": 0.20,
+                "away_team_away_draw_rate": 0.20,
+                "away_team_away_loss_rate": 0.60,
+            },
+        )
+        row = prepare_fixture(raw)
+        self.assertIsNotNone(row)
+        self.assertIn("Evidence route: venue form", row["analysis_note"])
+        assessment = football_evidence_assessment(raw)
+        self.assertTrue(assessment["qualified"])
+        self.assertIn("venue form", assessment["route"])
+
+        raw["features"]["home_team_home_win_rate"] = 0.60
+        assessment = football_evidence_assessment(raw)
+        self.assertFalse(assessment["qualified"])
+        self.assertIn("H2H=0", assessment["reason"])
+        self.assertIsNone(prepare_fixture(raw))
+
+    def test_double_chance_can_qualify_from_venue_form_without_standings_or_h2h(self):
+        raw = football_candidate(
+            "Home vs Away", 1.12, "double_chance_1x",
+            {
+                "home_team_home_games_sample": 5,
+                "home_team_home_unbeaten_rate": 0.80,
+                "away_team_away_games_sample": 5,
+                "away_team_away_loss_rate": 0.60,
+            },
+        )
+        self.assertIsNotNone(prepare_fixture(raw))
+        self.assertIn("venue form", football_evidence_assessment(raw)["route"])
+
+    def test_spread_can_qualify_from_strict_line_matched_form_without_h2h(self):
+        raw = football_candidate(
+            "Home vs Away", 1.55, "football_home_spread",
+            {
+                "selected_spread_form_line": "-0.5",
+                "selected_spread_form_sample": 5,
+                "selected_spread_form_rate": 0.80,
+                "opponent_spread_form_sample": 5,
+                "opponent_spread_form_rate": 0.20,
+            },
+        )
+        raw["market_name"] = "Two-way Soccer Spread · Home (-0.5)"
+        self.assertIsNotNone(prepare_fixture(raw))
+        raw["market_point"] = -1.0
+        self.assertIsNone(prepare_fixture(raw))
+
+    def test_totals_can_qualify_from_strict_recent_form_without_h2h(self):
+        raw = football_candidate(
+            "Home vs Away", 1.48, "over_1_5_goals",
+            {
+                "home_form_matches_sample": 5,
+                "away_form_matches_sample": 5,
+                "home_form_over_1_5_rate": 0.80,
+                "away_form_over_1_5_rate": 0.60,
+            },
+        )
+        self.assertIsNotNone(prepare_fixture(raw))
+        raw["features"]["away_form_over_1_5_rate"] = 0.40
+        self.assertIsNone(prepare_fixture(raw))
+
+    def test_btts_can_qualify_from_recent_form_without_h2h(self):
+        raw = football_candidate(
+            "Home vs Away", 1.55, "btts_yes",
+            {
+                "home_form_matches_sample": 5,
+                "away_form_matches_sample": 5,
+                "home_form_btts_yes_rate": 0.60,
+                "away_form_btts_yes_rate": 0.80,
+            },
+        )
+        self.assertIsNotNone(prepare_fixture(raw))
+        raw["market_key"] = "btts_no"
+        raw["features"]["home_form_btts_yes_rate"] = 0.20
+        raw["features"]["away_form_btts_yes_rate"] = 0.20
+        self.assertIsNotNone(prepare_fixture(raw))
+
+    def test_draw_can_qualify_from_both_venue_splits_without_h2h(self):
+        raw = football_candidate(
+            "Home vs Away", 1.70, "draw_1x2",
+            {
+                "home_team_home_games_sample": 5,
+                "home_team_home_draw_rate": 0.60,
+                "away_team_away_games_sample": 5,
+                "away_team_away_draw_rate": 0.60,
+            },
+        )
+        self.assertIsNotNone(prepare_fixture(raw))
+        raw["features"]["away_team_away_draw_rate"] = 0.40
         self.assertIsNone(prepare_fixture(raw))
 
     def test_standings_evidence_does_not_pass_a_goal_market(self):

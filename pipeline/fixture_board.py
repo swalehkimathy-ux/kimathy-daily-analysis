@@ -10,7 +10,7 @@ from datetime import date, datetime, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from engine import prepare_fixture
+from engine import football_evidence_assessment, prepare_fixture
 
 FOREBET_FIXTURES_URL = "https://www.forebet.com/en/football-tips-and-predictions-for-today"
 FOREBET_INJURIES_URL = "https://www.forebet.com/en/injured-players"
@@ -47,6 +47,13 @@ def _count(value: Any) -> int:
 
 def _option(raw: dict[str, Any], now_utc: datetime) -> dict[str, Any]:
     validated = prepare_fixture(raw)
+    sport = str(raw.get("sport_type") or "").strip().lower()
+    assessment = football_evidence_assessment(raw) if sport == "football" else {
+        "qualified": False,
+        "route": None,
+        "alternatives": [],
+        "reason": "This market uses its sport-specific evidence gate; no football route details apply.",
+    }
     odd_value = raw.get("picked_odds")
     try:
         odd = float(odd_value)
@@ -55,6 +62,9 @@ def _option(raw: dict[str, Any], now_utc: datetime) -> dict[str, Any]:
     updated_at = raw.get("odds_updated_at")
     quote_time = _utc(updated_at)
     stale_quote = bool(quote_time and (now_utc - quote_time).total_seconds() > 6 * 60 * 60)
+    evidence_reason = str(assessment.get("reason") or "")
+    if assessment.get("qualified") and not validated:
+        evidence_reason += " Evidence passed, but full fixture validation failed (check quote band, status, and required fields)."
     return {
         "market_key": str(raw.get("market_key") or ""),
         "market_name": str(raw.get("market_name") or "Unknown market"),
@@ -66,6 +76,10 @@ def _option(raw: dict[str, Any], now_utc: datetime) -> dict[str, Any]:
         "odds_updated_at": updated_at,
         "quote_stale_over_6h": stale_quote,
         "evidence_status": "passes_current_gate" if validated else "not_qualified",
+        "evidence_route": assessment.get("route"),
+        "evidence_alternatives": assessment.get("alternatives", []),
+        "evidence_reason": evidence_reason[:1200],
+        "evidence_snapshot": dict(raw.get("features")) if isinstance(raw.get("features"), dict) else {},
         "analysis_score": validated.get("confidence_score") if validated else None,
         "score_interpretation": "heuristic evidence rank, not a calibrated win probability",
         "analysis_note": str(raw.get("analysis_note") or "").strip()[:2400],
@@ -195,6 +209,8 @@ def build_fixture_board(
         )
         home_form = _count(features.get("home_form_matches_sample"))
         away_form = _count(features.get("away_form_matches_sample"))
+        home_venue_form = _count(features.get("home_team_home_games_sample"))
+        away_venue_form = _count(features.get("away_team_away_games_sample"))
         selected_for_ticket = any(
             str(row.get("sport_type", "")).strip().lower() == key[0]
             and str(row.get("provider_fixture_id") or "").strip() == key[1]
@@ -216,6 +232,13 @@ def build_fixture_board(
                 "h2h_sample": h2h_sample,
                 "home_form_sample": home_form,
                 "away_form_sample": away_form,
+                "home_venue_form_sample": home_venue_form,
+                "away_venue_form_sample": away_venue_form,
+                "h2h_latest_game_at": features.get("historical_h2h_latest_game_at"),
+                "home_form_latest_game_at": features.get("home_form_latest_game_at"),
+                "away_form_latest_game_at": features.get("away_form_latest_game_at"),
+                "home_venue_form_latest_game_at": features.get("home_team_home_latest_game_at"),
+                "away_venue_form_latest_game_at": features.get("away_team_away_latest_game_at"),
                 "league_position_available": features.get("home_table_position") is not None,
                 "injury_data_available": False,
             },

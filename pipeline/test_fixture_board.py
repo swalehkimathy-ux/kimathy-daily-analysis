@@ -129,6 +129,10 @@ class FixtureBoardTests(unittest.TestCase):
             sum(option["evidence_status"] == "passes_current_gate" for option in board[0]["market_options"]),
             1,
         )
+        by_market = {option["market_key"]: option for option in board[0]["market_options"]}
+        self.assertIn("standings", by_market["double_chance_1x"]["evidence_route"])
+        self.assertEqual(by_market["double_chance_1x"]["evidence_snapshot"]["home_table_position"], 1)
+        self.assertIn("No 1X2 route passed", by_market["home_win_1x2"]["evidence_reason"])
 
     def test_provider_normalizer_retains_started_and_finished_schedule_rows(self):
         rows = [

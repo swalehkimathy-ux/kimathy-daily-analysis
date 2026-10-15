@@ -301,6 +301,8 @@
     .market-option .market-result { margin-left: auto; color: #91a0aa; }
     .market-option .market-result.pass { color: var(--lime); }
     .market-option-note { flex-basis: 100%; color: #82909b; line-height: 1.45; overflow-wrap: anywhere; }
+    .market-option-evidence { flex-basis: 100%; color: #a6b6c0; line-height: 1.4; font-size: 10px; overflow-wrap: anywhere; }
+    .market-option-evidence strong { color: var(--lime); font-weight: 700; }
     .market-option a,.schedule-links a { color: var(--blue); text-decoration: underline; text-underline-offset: 2px; }
     .schedule-links { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; font-size: 8px; }
     .schedule-score { text-align: right; align-self: start; }
@@ -894,12 +896,18 @@
         const h2h = Number(stats.h2h_sample) || 0;
         const homeForm = Number(stats.home_form_sample) || 0;
         const awayForm = Number(stats.away_form_sample) || 0;
+        const homeVenueForm = Number(stats.home_venue_form_sample) || 0;
+        const awayVenueForm = Number(stats.away_venue_form_sample) || 0;
+        const h2hFresh = stats.h2h_latest_game_at ? formatTriggerTime(stats.h2h_latest_game_at) : '—';
+        const homeFormFresh = stats.home_form_latest_game_at ? formatTriggerTime(stats.home_form_latest_game_at) : '—';
+        const awayFormFresh = stats.away_form_latest_game_at ? formatTriggerTime(stats.away_form_latest_game_at) : '—';
         const status = String(f.fixture_state || 'unknown').replace(/_/g, ' ');
         const optionsMarkup = options.length ? `<div class="schedule-options">${options.map(option => {
           const passed = option.evidence_status === 'passes_current_gate';
           const odds = option.picked_odds != null ? `@ ${fmtOdds(option.picked_odds)}` : 'odds unavailable';
           const freshness = option.odds_updated_at ? `updated ${esc(fmtTime(option.odds_updated_at))}${option.quote_stale_over_6h ? ' · stale (>6h)' : ''}` : 'timestamp unavailable';
-          return `<div class="market-option ${passed ? 'pass' : ''}"><b>${esc(option.market_name || 'Market')}</b><span>${esc(option.selection_name || '')}</span><span>${esc(odds)}</span><small>${esc(freshness)}</small><span class="market-result ${passed ? 'pass' : ''}">${passed ? `EVIDENCE RANK ${Number(option.analysis_score || 0).toFixed(1)}/100` : 'GATE NOT PASSED'}</span>${option.bookmaker_name ? `<small>${esc(option.bookmaker_name)}</small>` : ''}${option.analysis_note ? `<div class="market-option-note">${linkifySafeText(option.analysis_note)}</div>` : ''}</div>`;
+          const evidenceLabel = option.evidence_route ? `<div class="market-option-evidence"><strong>Evidence route:</strong> ${esc(option.evidence_route)}${Array.isArray(option.evidence_alternatives) && option.evidence_alternatives.length ? `<br>Also passed: ${esc(option.evidence_alternatives.join('; '))}` : ''}</div>` : option.evidence_reason ? `<div class="market-option-evidence"><strong>Why not qualified:</strong> ${esc(option.evidence_reason)}</div>` : '';
+          return `<div class="market-option ${passed ? 'pass' : ''}"><b>${esc(option.market_name || 'Market')}</b><span>${esc(option.selection_name || '')}</span><span>${esc(odds)}</span><small>${esc(freshness)}</small><span class="market-result ${passed ? 'pass' : ''}">${passed ? `EVIDENCE RANK ${Number(option.analysis_score || 0).toFixed(1)}/100` : 'GATE NOT PASSED'}</span>${option.bookmaker_name ? `<small>${esc(option.bookmaker_name)}</small>` : ''}${evidenceLabel}${option.analysis_note ? `<div class="market-option-note">${linkifySafeText(option.analysis_note)}</div>` : ''}</div>`;
         }).join('')}</div>` : `<div class="schedule-recommendation">No matching quote in the selected Odds API feed. The fixture stays listed; quote absence is a coverage gap, not evidence about the outcome.</div>`;
         const recommendation = recommended
           ? `<div class="schedule-recommendation"><strong>Top market by current evidence:</strong> ${esc(recommended.market_name || '')} · ${esc(recommended.selection_name || '')} @ ${fmtOdds(recommended.picked_odds)}. Evidence rank ${Number(recommended.analysis_score || 0).toFixed(1)}/100 — a heuristic ordering signal, not a calibrated probability. ${linkifySafeText(recommended.analysis_note || '')}</div>`
@@ -918,7 +926,8 @@
             <div class="schedule-subline">${esc(String(f.analysis_status || 'not analyzed').replace(/_/g, ' '))} · ${f.kickoff_time_known === false ? 'kickoff time unknown' : `kickoff time from ${esc(f.kickoff_time_source || 'API-Sports')}`} · provider fixture ${esc(f.provider_fixture_id || 'unavailable')}</div>
             ${recommendation}
             ${optionsMarkup}
-            <div class="schedule-subline">Evidence availability: H2H sample ${h2h || '—'} · home recent form ${homeForm || '—'} · away recent form ${awayForm || '—'} · standings ${stats.league_position_available ? 'available' : 'unavailable'} · injuries/suspensions unavailable.</div>
+            <div class="schedule-subline">Evidence availability: H2H sample ${h2h || '—'} · home/away recent form ${homeForm || '—'}/${awayForm || '—'} · venue split home-at-home/away-away ${homeVenueForm || '—'}/${awayVenueForm || '—'} · standings ${stats.league_position_available ? 'available' : 'unavailable'} · injuries/suspensions unavailable.</div>
+            <div class="schedule-subline">Latest completed stats: H2H ${esc(h2hFresh)} · home/away form ${esc(homeFormFresh)} / ${esc(awayFormFresh)}. Odds timestamps are shown separately for each quote.</div>
             ${links ? `<div class="schedule-links">${links}<small>Owner verification links only; their content is not ingested.</small></div>` : ''}
             ${expanded ? `<div class="fixture-details"><strong>Coverage and analysis notes</strong>${linkifySafeText(f.analysis_note || 'No supporting statistics note was supplied for this fixture.')}<br>Source: ${esc(f.source || 'API-Sports schedule')}. Missing fields are left unavailable; the evidence rank is not a win probability.</div>` : ''}
             <button class="why-button" type="button" data-toggle-details="${esc(id)}" aria-expanded="${expanded}">${expanded ? 'Hide details' : 'More coverage details'}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>

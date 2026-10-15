@@ -581,27 +581,66 @@ class APISportsEnrichmentTests(unittest.TestCase):
         self.assertEqual(result.fixtures[0]["provider_fixture_id"], "9001")
         self.assertEqual(result.fixtures[0]["provider_home_team_id"], "1")
 
-    def test_standings_are_used_only_for_direct_double_chance_evidence(self):
+    def test_standings_and_independent_venue_form_enrich_double_chance(self):
         candidate = football_candidate()
         candidate.update({"market_key": "double_chance_1x", "market_name": "Double Chance 1X"})
+        histories = football_team_history_payloads()
 
         def handler(call):
-            url = call["url"]
+            url, params = call["url"], call["params"]
             if url.endswith("/status"):
                 return FakeResponse({"response": {"requests": {"current": 0, "limit_day": 100}}})
-            if url.endswith("/fixtures"):
+            if url.endswith("/fixtures") and "date" in params:
                 return FakeResponse(football_schedule_payload())
+            if url.endswith("/fixtures") and "team" in params:
+                return FakeResponse(histories[str(params["team"])])
             if url.endswith("/standings"):
                 return FakeResponse(football_standings_payload())
-            self.fail(f"Unexpected request path: {url}")
+            if url.endswith("/fixtures/headtohead"):
+                return FakeResponse(football_h2h_payload())
+            self.fail(f"Unexpected request: {url} {params}")
 
         result = enrich_odds_candidates(
             [candidate], football_key="offline-test-key", analysis_day="2026-10-04",
             now=self.NOW, sessions={"football": FakeSession(handler)},
         )
-        self.assertEqual(result.football_calls, 2)
+        self.assertEqual(result.football_calls, 5)
         self.assertEqual(result.fixtures[0]["features"]["home_table_position"], 2)
         self.assertTrue(result.fixtures[0]["features"]["away_bottom_five"])
+        self.assertEqual(result.fixtures[0]["features"]["home_team_home_games_sample"], 5)
+        self.assertEqual(result.fixtures[0]["features"]["away_team_away_games_sample"], 5)
+        self.assertIsNotNone(prepare_fixture(result.fixtures[0]))
+
+    def test_recent_form_is_collected_even_when_h2h_is_insufficient(self):
+        candidate = football_candidate()
+        candidate.update({
+            "market_key": "over_1_5_goals",
+            "market_name": "Over 1.5 Goals",
+            "market_point": "1.5",
+        })
+        histories = football_team_history_payloads()
+
+        def handler(call):
+            url, params = call["url"], call["params"]
+            if url.endswith("/status"):
+                return FakeResponse({"response": {"requests": {"current": 0, "limit_day": 100}}})
+            if url.endswith("/fixtures") and "date" in params:
+                return FakeResponse(football_schedule_payload())
+            if url.endswith("/fixtures/headtohead"):
+                return FakeResponse({"response": football_h2h_payload()["response"][:3]})
+            if url.endswith("/fixtures") and "team" in params:
+                return FakeResponse(histories[str(params["team"])])
+            self.fail(f"Unexpected request: {url} {params}")
+
+        result = enrich_odds_candidates(
+            [candidate], football_key="offline-test-key", analysis_day="2026-10-04",
+            now=self.NOW, sessions={"football": FakeSession(handler)},
+        )
+        self.assertEqual(result.fixtures[0]["features"]["home_form_matches_sample"], 5)
+        self.assertEqual(result.fixtures[0]["features"]["away_form_matches_sample"], 5)
+        self.assertEqual(result.fixtures[0]["features"]["historical_total_goals_sample"], 3)
+        self.assertIn("home_form_latest_game_at", result.fixtures[0]["features"])
+        self.assertIn("historical_h2h_latest_game_at", result.fixtures[0]["features"])
         self.assertIsNotNone(prepare_fixture(result.fixtures[0]))
 
     def test_basketball_totals_and_spread_receive_line_specific_history(self):

@@ -40,10 +40,15 @@ FOOTBALL_TOTAL_MARKETS = {
     "over_0_5_goals", "over_1_5_goals", "over_2_5_goals",
     "under_0_5_goals", "under_1_5_goals", "under_2_5_goals",
 }
-FOOTBALL_FORM_MARKETS = FOOTBALL_TOTAL_MARKETS | FOOTBALL_SPREAD_MARKETS
+FOOTBALL_BTTS_MARKETS = {"btts_yes", "btts_no"}
+FOOTBALL_VENUE_FORM_MARKETS = {"home_win_1x2", "draw_1x2", "away_win_1x2", "double_chance_1x"}
+FOOTBALL_FORM_MARKETS = (
+    FOOTBALL_TOTAL_MARKETS | FOOTBALL_SPREAD_MARKETS
+    | FOOTBALL_BTTS_MARKETS | FOOTBALL_VENUE_FORM_MARKETS
+)
 FOOTBALL_H2H_MARKETS = {
     "btts_yes", "btts_no", *FOOTBALL_TOTAL_MARKETS,
-    "home_win_1x2", "draw_1x2", "away_win_1x2", *FOOTBALL_SPREAD_MARKETS,
+    "home_win_1x2", "draw_1x2", "away_win_1x2", "double_chance_1x", *FOOTBALL_SPREAD_MARKETS,
 }
 MIN_STANDINGS_MATCHES = 5
 MIN_STANDINGS_TEAMS = 10
@@ -713,7 +718,7 @@ def _football_h2h_evidence(
         results.append((game_time, score[0], score[1], historical_home, historical_away))
     results.sort(key=lambda item: item[0], reverse=True)
     sample = results[:5]
-    if len(sample) < 5:
+    if not sample:
         return None
 
     totals = [home + away for _, home, away, _, _ in sample]
@@ -722,6 +727,7 @@ def _football_h2h_evidence(
         "historical_total_goals_sample": len(sample),
         "historical_btts_sample": len(sample),
         "historical_btts_yes_count": btts_yes_count,
+        "historical_h2h_latest_game_at": sample[0][0].isoformat(),
     }
     for tag, threshold in (("0_5", 1), ("1_5", 2), ("2_5", 3)):
         evidence[f"historical_over_{tag}_count"] = sum(1 for total in totals if total >= threshold)
@@ -768,10 +774,21 @@ def _football_h2h_evidence(
 
 
 def _football_team_form_records(
-    payload: dict[str, Any], team_id: str, target_time: datetime
+    payload: dict[str, Any],
+    team_id: str,
+    target_time: datetime,
+    venue: str | None = None,
 ) -> list[tuple[datetime, int, int]]:
-    """Return the five latest completed team games before the target kickoff."""
+    """Return up to five latest completed scorelines before kickoff.
+
+    With ``venue="home"`` or ``venue="away"``, restrict the list to the
+    team's corresponding home/away fixtures. Venue samples remain separate
+    from the all-competition recent-form samples.
+    """
     requested_team = _id(team_id)
+    requested_venue = str(venue or "").strip().lower()
+    if requested_venue not in {"", "home", "away"}:
+        raise ValueError("venue must be home, away, or None")
     records: list[tuple[datetime, int, int]] = []
     if not requested_team:
         return records
@@ -787,9 +804,9 @@ def _football_team_form_records(
             or not _final_status(parts.get("status"), "football")
         ):
             continue
-        if home_id == requested_team:
+        if home_id == requested_team and requested_venue in {"", "home"}:
             goals_for, goals_against = score
-        elif away_id == requested_team:
+        elif away_id == requested_team and requested_venue in {"", "away"}:
             goals_for, goals_against = score[1], score[0]
         else:
             continue
@@ -804,24 +821,50 @@ def _football_form_features(
     market_key: str,
     market_point: Any,
     selection_side: Any,
+    home_venue_records: list[tuple[datetime, int, int]] | None = None,
+    away_venue_records: list[tuple[datetime, int, int]] | None = None,
 ) -> dict[str, Any]:
-    """Convert recent team scorelines into market-line-specific rates."""
-    if len(home_records) < 5 or len(away_records) < 5:
-        return {}
+    """Summarize recent overall and venue-split football form, with sample sizes."""
     features: dict[str, Any] = {}
     for role, records in (("home", home_records), ("away", away_records)):
         features[f"{role}_form_matches_sample"] = len(records)
+        if not records:
+            continue
+        features[f"{role}_form_latest_game_at"] = records[0][0].isoformat()
         features[f"{role}_form_goals_for_average"] = round(
             sum(goals_for for _, goals_for, _ in records) / len(records), 3
         )
         features[f"{role}_form_goals_against_average"] = round(
             sum(goals_against for _, _, goals_against in records) / len(records), 3
         )
+        features[f"{role}_form_btts_yes_rate"] = round(
+            sum(goals_for > 0 and goals_against > 0 for _, goals_for, goals_against in records)
+            / len(records), 4
+        )
         totals = [goals_for + goals_against for _, goals_for, goals_against in records]
         for tag, threshold in (("0_5", 1), ("1_5", 2), ("2_5", 3)):
             features[f"{role}_form_over_{tag}_rate"] = round(
                 sum(total >= threshold for total in totals) / len(totals), 4
             )
+
+    venue_splits = (
+        ("home_team_home", home_venue_records or []),
+        ("away_team_away", away_venue_records or []),
+    )
+    for prefix, records in venue_splits:
+        features[f"{prefix}_games_sample"] = len(records)
+        if not records:
+            continue
+        features[f"{prefix}_latest_game_at"] = records[0][0].isoformat()
+        wins = sum(goals_for > goals_against for _, goals_for, goals_against in records)
+        draws = sum(goals_for == goals_against for _, goals_for, goals_against in records)
+        losses = sum(goals_for < goals_against for _, goals_for, goals_against in records)
+        count = len(records)
+        features[f"{prefix}_win_rate"] = round(wins / count, 4)
+        features[f"{prefix}_draw_rate"] = round(draws / count, 4)
+        features[f"{prefix}_loss_rate"] = round(losses / count, 4)
+        if prefix == "home_team_home":
+            features[f"{prefix}_unbeaten_rate"] = round((wins + draws) / count, 4)
 
     if market_key in FOOTBALL_SPREAD_MARKETS:
         try:
@@ -849,15 +892,15 @@ def _football_form_features(
             for _, goals_for, goals_against in opponent_records
         )
         features.update({
+            "selected_spread_form_line": str(line),
             "selected_spread_form_sample": len(selected_records),
             "selected_spread_form_cover_count": selected_hits,
-            "selected_spread_form_rate": round(selected_hits / len(selected_records), 4),
+            "selected_spread_form_rate": round(selected_hits / len(selected_records), 4) if selected_records else None,
             "opponent_spread_form_sample": len(opponent_records),
             "opponent_spread_form_cover_count": opponent_hits,
-            "opponent_spread_form_rate": round(opponent_hits / len(opponent_records), 4),
+            "opponent_spread_form_rate": round(opponent_hits / len(opponent_records), 4) if opponent_records else None,
         })
     return features
-
 
 def _append_note(candidate: dict[str, Any], note: str, add_source: bool = True) -> None:
     existing = str(candidate.get("analysis_note", "")).strip()
@@ -977,12 +1020,10 @@ def _football_enrich(
         market = str(candidates[index].get("market_key", "")).lower()
         if market in FOOTBALL_FORM_MARKETS:
             priority = 0
-        elif market == "double_chance_1x":
-            priority = 1
         elif market in FOOTBALL_H2H_MARKETS:
-            priority = 2
+            priority = 1
         else:
-            priority = 3
+            priority = 2
         return priority, index
 
     ordered_matches = sorted(matches.items(), key=enrichment_priority)
@@ -1075,12 +1116,13 @@ def _football_enrich(
         if h2h_result is None:
             continue
         features.update(h2h_result)
+        h2h_n = h2h_result.get("historical_total_goals_sample", 0)
         notes_by_index[index].append(
-            "API-Football last five completed head-to-head matches: "
+            f"API-Football latest completed head-to-head sample ({h2h_n}/5 available before kickoff): "
             f"1+/2+/3+ goals in {h2h_result['historical_over_0_5_count']}/"
             f"{h2h_result['historical_over_1_5_count']}/"
             f"{h2h_result['historical_over_2_5_count']}; "
-            f"BTTS Yes in {h2h_result['historical_btts_yes_count']}/5; "
+            f"BTTS Yes in {h2h_result['historical_btts_yes_count']}/{h2h_result.get('historical_btts_sample', 0)}; "
             f"upcoming-home wins/draws/away wins "
             f"{h2h_result.get('historical_home_win_count', 0)}/"
             f"{h2h_result.get('historical_draw_count', 0)}/"
@@ -1094,34 +1136,15 @@ def _football_enrich(
                 f"{h2h_result['historical_spread_sample']} completed H2Hs."
             )
 
-    # Totals and soccer spread picks also need recent scoreline trends for both
-    # teams. Team histories are cached by ID so several markets on the same game
-    # do not trigger duplicate provider calls.
+    # Gather recent records for each relevant football market independently of
+    # H2H availability. Team endpoints are cached, and venue splits are derived
+    # locally from the same bounded pre-kickoff histories.
     form_limit = min(FOOTBALL_FORM_LIMIT, max(0, client.call_budget - core_requests_used))
     for index, provider_game in ordered_matches:
         candidate = candidates[index]
         market_key = str(candidate.get("market_key", "")).lower()
         if market_key not in FOOTBALL_FORM_MARKETS:
             continue
-        features = working_features[index]
-        if market_key in FOOTBALL_TOTAL_MARKETS:
-            match = re.fullmatch(r"(over|under)_(0_5|1_5|2_5)_goals", market_key)
-            if not match:
-                continue
-            direction, line_tag = match.groups()
-            sample = _to_int(features.get("historical_total_goals_sample")) or 0
-            over_count = _to_int(features.get(f"historical_over_{line_tag}_count"))
-            if over_count is None:
-                continue
-            h2h_hits = over_count if direction == "over" else sample - over_count
-            if sample < 5 or h2h_hits < 4:
-                continue
-        else:
-            spread_sample = _to_int(features.get("historical_spread_sample")) or 0
-            spread_hits = _to_int(features.get("historical_spread_cover_count"))
-            if spread_sample < 5 or spread_hits is None or spread_hits < 4:
-                continue
-
         target_time, _ = _parse_time(
             candidate.get("match_time"), assume_timezone=timezone.utc
         )
@@ -1137,8 +1160,8 @@ def _football_enrich(
         for team_id in uncached_ids:
             form_end_day = target_time.astimezone(EAT).date()
             form_start_day = form_end_day - timedelta(days=365)
-            # The Free plan rejects the `last` filter. Use its date-window filters
-            # to bound volume, then select the latest five completed scorelines locally.
+            # The Free plan rejects `last`; use its date-window filters and
+            # select the latest five completed scorelines locally.
             team_history_cache[team_id] = _safe_get(
                 client,
                 "fixtures",
@@ -1158,48 +1181,98 @@ def _football_enrich(
             continue
         home_records = _football_team_form_records(home_payload, str(home_id), target_time)
         away_records = _football_team_form_records(away_payload, str(away_id), target_time)
+        home_venue_records = _football_team_form_records(
+            home_payload, str(home_id), target_time, venue="home"
+        )
+        away_venue_records = _football_team_form_records(
+            away_payload, str(away_id), target_time, venue="away"
+        )
         form_features = _football_form_features(
             home_records,
             away_records,
             market_key,
             candidate.get("market_point"),
             candidate.get("selection_side"),
+            home_venue_records,
+            away_venue_records,
         )
         if not form_features:
             continue
+        features = working_features[index]
         features.update(form_features)
-        home_over_rate = form_features.get("home_form_over_2_5_rate", 0.0)
-        away_over_rate = form_features.get("away_form_over_2_5_rate", 0.0)
-        notes_by_index[index].append(
-            "Recent team scorelines (last five completed before kickoff; API-Football, "
-            "all competitions): "
-            f"home {form_features['home_form_goals_for_average']:.2f} goals for/"
-            f"{form_features['home_form_goals_against_average']:.2f} against, "
-            f"Over 2.5 in {home_over_rate:.0%}; away "
-            f"{form_features['away_form_goals_for_average']:.2f} for/"
-            f"{form_features['away_form_goals_against_average']:.2f} against, "
-            f"Over 2.5 in {away_over_rate:.0%}."
+
+        home_n = form_features.get("home_form_matches_sample", 0)
+        away_n = form_features.get("away_form_matches_sample", 0)
+        form_note = (
+            "Recent team scorelines before kickoff (API-Football, all competitions): "
+            f"home sample {home_n}/5, away sample {away_n}/5."
         )
+        if home_records:
+            form_note += (
+                f" Home {form_features['home_form_goals_for_average']:.2f} goals for/"
+                f"{form_features['home_form_goals_against_average']:.2f} against; "
+                f"BTTS Yes {form_features['home_form_btts_yes_rate']:.0%}."
+            )
+        if away_records:
+            form_note += (
+                f" Away {form_features['away_form_goals_for_average']:.2f} goals for/"
+                f"{form_features['away_form_goals_against_average']:.2f} against; "
+                f"BTTS Yes {form_features['away_form_btts_yes_rate']:.0%}."
+            )
+        home_venue_n = form_features.get("home_team_home_games_sample", 0)
+        away_venue_n = form_features.get("away_team_away_games_sample", 0)
+        form_note += f" Venue samples: home team at home {home_venue_n}/5; away team away {away_venue_n}/5."
+        if home_venue_records:
+            form_note += (
+                f" Home-at-home W/D/L {form_features['home_team_home_win_rate']:.0%}/"
+                f"{form_features['home_team_home_draw_rate']:.0%}/"
+                f"{form_features['home_team_home_loss_rate']:.0%}."
+            )
+        if away_venue_records:
+            form_note += (
+                f" Away-away W/D/L {form_features['away_team_away_win_rate']:.0%}/"
+                f"{form_features['away_team_away_draw_rate']:.0%}/"
+                f"{form_features['away_team_away_loss_rate']:.0%}."
+            )
+
         if market_key in FOOTBALL_SPREAD_MARKETS:
-            notes_by_index[index].append(
-                f"Recent five-game spread form at line {candidate.get('market_point')}: "
-                f"selected cover {form_features.get('selected_spread_form_cover_count', 0)}/5; "
-                f"opponent cover {form_features.get('opponent_spread_form_cover_count', 0)}/5."
+            selected_n = form_features.get("selected_spread_form_sample", 0)
+            opponent_n = form_features.get("opponent_spread_form_sample", 0)
+            selected_rate = form_features.get("selected_spread_form_rate")
+            opponent_rate = form_features.get("opponent_spread_form_rate")
+            selected_label = f"{selected_rate:.0%}" if isinstance(selected_rate, (int, float)) else "unavailable"
+            opponent_label = f"{opponent_rate:.0%}" if isinstance(opponent_rate, (int, float)) else "unavailable"
+            form_note += (
+                f" At exact quoted two-way spread line {candidate.get('market_point')}, "
+                f"selected cover {selected_label} ({selected_n}/5); opponent cover "
+                f"{opponent_label} ({opponent_n}/5)."
             )
-        else:
-            line_home_over_rate = form_features.get(f"home_form_over_{line_tag}_rate", 0.0)
-            line_away_over_rate = form_features.get(f"away_form_over_{line_tag}_rate", 0.0)
-            home_selected_rate = (
-                line_home_over_rate if direction == "over" else 1.0 - line_home_over_rate
-            )
-            away_selected_rate = (
-                line_away_over_rate if direction == "over" else 1.0 - line_away_over_rate
-            )
-            notes_by_index[index].append(
-                f"For the quoted {direction} {line_tag.replace('_', '.')} totals line, "
-                f"recent hit rates were home {home_selected_rate:.0%} and "
-                f"away {away_selected_rate:.0%}."
-            )
+        elif market_key in FOOTBALL_TOTAL_MARKETS:
+            match = re.fullmatch(r"(over|under)_(0_5|1_5|2_5)_goals", market_key)
+            if match:
+                direction, line_tag = match.groups()
+                home_over = form_features.get(f"home_form_over_{line_tag}_rate")
+                away_over = form_features.get(f"away_form_over_{line_tag}_rate")
+                if isinstance(home_over, (int, float)) and isinstance(away_over, (int, float)):
+                    home_rate = home_over if direction == "over" else 1.0 - home_over
+                    away_rate = away_over if direction == "over" else 1.0 - away_over
+                    form_note += (
+                        f" For quoted {direction} {line_tag.replace('_', '.')} goals, "
+                        f"selected-direction rates: home {home_rate:.0%}, away {away_rate:.0%}."
+                    )
+                else:
+                    form_note += f" Quoted {direction} {line_tag.replace('_', '.')} form rate unavailable."
+        elif market_key in FOOTBALL_BTTS_MARKETS:
+            home_rate = form_features.get("home_form_btts_yes_rate")
+            away_rate = form_features.get("away_form_btts_yes_rate")
+            if isinstance(home_rate, (int, float)) and isinstance(away_rate, (int, float)):
+                if market_key == "btts_no":
+                    home_rate, away_rate = 1.0 - home_rate, 1.0 - away_rate
+                form_note += (
+                    f" For quoted {market_key.removeprefix('btts_').upper()}, "
+                    f"recent selected-outcome rates: home {home_rate:.0%}, away {away_rate:.0%}."
+                )
+        notes_by_index[index].append(form_note)
 
     for index, features in working_features.items():
         if features == dict(candidates[index].get("features") or {}):

@@ -80,24 +80,56 @@ def _safe_float(value: Any, default: float = 0.0) -> float:
         return default
 
 
-def _football_market_evidence(
+def _valid_rate(features: dict[str, Any], key: str) -> float | None:
+    value = _safe_float(features.get(key), -1.0)
+    return value if 0.0 <= value <= 1.0 else None
+
+
+def _football_market_routes(
     market: str,
     features: dict[str, Any],
     market_point: Any = None,
     selection_side: Any = None,
-) -> bool:
+) -> list[str]:
+    """Return independently sufficient, market-specific evidence routes.
+
+    Each route has its own minimum sample and rate thresholds. H2H remains
+    useful, but is no longer mandatory when relevant recent or venue-split form
+    independently clears its stricter alternative threshold.
+    """
+    market = str(market or "").strip().lower()
+    routes: list[str] = []
+
     if market == "double_chance_1x":
         table_size = _safe_int(features.get("league_table_size"))
         home_played = _safe_int(features.get("home_league_matches"))
         away_played = _safe_int(features.get("away_league_matches"))
         home_position = _safe_int(features.get("home_table_position"), 999)
-        return (
-            table_size >= 10
-            and home_played >= 5
-            and away_played >= 5
-            and home_position <= 3
-            and features.get("away_bottom_five") is True
-        )
+        if (
+            table_size >= 10 and home_played >= 5 and away_played >= 5
+            and home_position <= 3 and features.get("away_bottom_five") is True
+        ):
+            routes.append(
+                f"standings: home top-three vs away bottom-five ({home_played}/{away_played} league matches)"
+            )
+
+        h2h_sample = _safe_int(features.get("historical_1x2_sample"))
+        home_wins = _safe_int(features.get("historical_home_win_count"))
+        draws = _safe_int(features.get("historical_draw_count"))
+        if h2h_sample >= 5 and 0 <= home_wins + draws <= h2h_sample and home_wins + draws >= 4:
+            routes.append(f"H2H 1X: {home_wins + draws}/{h2h_sample}")
+
+        home_sample = _safe_int(features.get("home_team_home_games_sample"))
+        away_sample = _safe_int(features.get("away_team_away_games_sample"))
+        home_unbeaten = _valid_rate(features, "home_team_home_unbeaten_rate")
+        away_losses = _valid_rate(features, "away_team_away_loss_rate")
+        if (
+            home_sample >= 5 and away_sample >= 5
+            and home_unbeaten is not None and home_unbeaten >= 0.80
+            and away_losses is not None and away_losses >= 0.60
+        ):
+            routes.append("venue form: home unbeaten >=4/5; away lost >=3/5 away")
+        return routes
 
     if market in FOOTBALL_1X2_MARKETS:
         count_key = {
@@ -105,87 +137,203 @@ def _football_market_evidence(
             "draw_1x2": "historical_draw_count",
             "away_win_1x2": "historical_away_win_count",
         }[market]
-        sample = _safe_int(features.get("historical_1x2_sample"))
-        hits = _safe_int(features.get(count_key), -1)
-        return sample >= 5 and 0 <= hits <= sample and hits >= 4
+        h2h_sample = _safe_int(features.get("historical_1x2_sample"))
+        h2h_hits = _safe_int(features.get(count_key), -1)
+        if h2h_sample >= 5 and 0 <= h2h_hits <= h2h_sample and h2h_hits >= 4:
+            routes.append(f"H2H selected 1X2 result: {h2h_hits}/{h2h_sample}")
+
+        home_sample = _safe_int(features.get("home_team_home_games_sample"))
+        away_sample = _safe_int(features.get("away_team_away_games_sample"))
+        home_wins = _valid_rate(features, "home_team_home_win_rate")
+        home_losses = _valid_rate(features, "home_team_home_loss_rate")
+        home_draws = _valid_rate(features, "home_team_home_draw_rate")
+        away_wins = _valid_rate(features, "away_team_away_win_rate")
+        away_losses = _valid_rate(features, "away_team_away_loss_rate")
+        away_draws = _valid_rate(features, "away_team_away_draw_rate")
+        if home_sample >= 5 and away_sample >= 5:
+            if (
+                market == "home_win_1x2"
+                and home_wins is not None and home_wins >= 0.80
+                and away_losses is not None and away_losses >= 0.60
+            ):
+                routes.append("venue form: home won >=4/5 at home; away lost >=3/5 away")
+            elif (
+                market == "away_win_1x2"
+                and away_wins is not None and away_wins >= 0.80
+                and home_losses is not None and home_losses >= 0.60
+            ):
+                routes.append("venue form: away won >=4/5 away; home lost >=3/5 at home")
+            elif (
+                market == "draw_1x2"
+                and home_draws is not None and home_draws >= 0.60
+                and away_draws is not None and away_draws >= 0.60
+            ):
+                routes.append("venue form: each side drew >=3/5 in its relevant venue split")
+        return routes
 
     if market in FOOTBALL_SPREAD_MARKETS:
         expected_side = "home" if market == "football_home_spread" else "away"
+        if str(selection_side or "").strip().lower() != expected_side:
+            return routes
         try:
             line = _decimal(market_point)
-            evidence_line = _decimal(features.get("historical_spread_line"))
         except ValueError:
-            return False
-        if (
-            str(selection_side or "").strip().lower() != expected_side
-            or abs(line) > Decimal("5")
-            or line * 2 != (line * 2).to_integral_value()
-            or evidence_line != line
-        ):
-            return False
+            return routes
+        try:
+            historical_line = _decimal(features.get("historical_spread_line"))
+        except ValueError:
+            historical_line = None
+        try:
+            form_line = _decimal(features.get("selected_spread_form_line"))
+        except ValueError:
+            form_line = None
+        if abs(line) > Decimal("5") or line * 2 != (line * 2).to_integral_value():
+            return routes
         h2h_sample = _safe_int(features.get("historical_spread_sample"))
         h2h_hits = _safe_int(features.get("historical_spread_cover_count"), -1)
         selected_sample = _safe_int(features.get("selected_spread_form_sample"))
         opponent_sample = _safe_int(features.get("opponent_spread_form_sample"))
-        selected_rate = _safe_float(features.get("selected_spread_form_rate"), -1)
-        opponent_rate = _safe_float(features.get("opponent_spread_form_rate"), -1)
-        return (
-            h2h_sample >= 5
-            and 0 <= h2h_hits <= h2h_sample
-            and h2h_hits >= 4
-            and selected_sample >= 5
-            and opponent_sample >= 5
-            and 0.70 <= selected_rate <= 1.0
-            and 0.0 <= opponent_rate <= 0.30
-        )
+        selected_rate = _valid_rate(features, "selected_spread_form_rate")
+        opponent_rate = _valid_rate(features, "opponent_spread_form_rate")
+        if (
+            historical_line is not None and historical_line == line
+            and form_line is not None and form_line == line and h2h_sample >= 5
+            and 0 <= h2h_hits <= h2h_sample and h2h_hits >= 4
+            and selected_sample >= 5 and opponent_sample >= 5
+            and selected_rate is not None and selected_rate >= 0.70
+            and opponent_rate is not None and opponent_rate <= 0.30
+        ):
+            routes.append(f"quoted-line H2H {h2h_hits}/{h2h_sample} plus recent cover form")
+        if (
+            form_line is not None and form_line == line and selected_sample >= 5 and opponent_sample >= 5
+            and selected_rate is not None and selected_rate >= 0.80
+            and opponent_rate is not None and opponent_rate <= 0.20
+        ):
+            routes.append("independent recent line form: selected >=4/5; opponent <=1/5")
+        return routes
 
     if market in {"btts_yes", "btts_no"}:
-        sample = _safe_int(features.get("historical_btts_sample"))
+        h2h_sample = _safe_int(features.get("historical_btts_sample"))
         yes_count = _safe_int(features.get("historical_btts_yes_count"), -1)
-        if sample < 5 or yes_count < 0 or yes_count > sample:
-            return False
-        hits = yes_count if market == "btts_yes" else sample - yes_count
-        return hits >= 4
+        if h2h_sample >= 5 and 0 <= yes_count <= h2h_sample:
+            hits = yes_count if market == "btts_yes" else h2h_sample - yes_count
+            if hits >= 4:
+                routes.append(f"H2H BTTS {market.removeprefix('btts_').upper()}: {hits}/{h2h_sample}")
+
+        home_sample = _safe_int(features.get("home_form_matches_sample"))
+        away_sample = _safe_int(features.get("away_form_matches_sample"))
+        home_yes = _valid_rate(features, "home_form_btts_yes_rate")
+        away_yes = _valid_rate(features, "away_form_btts_yes_rate")
+        if home_sample >= 5 and away_sample >= 5 and home_yes is not None and away_yes is not None:
+            if market == "btts_yes" and home_yes >= 0.60 and away_yes >= 0.60:
+                routes.append("independent recent form: BTTS Yes in >=3/5 for each team")
+            elif market == "btts_no" and home_yes <= 0.40 and away_yes <= 0.40:
+                routes.append("independent recent form: BTTS No in >=3/5 for each team")
+        return routes
 
     match = re.fullmatch(r"(over|under)_(0_5|1_5|2_5)_goals", market)
     if not match:
-        return False
+        return routes
     direction, line_tag = match.groups()
-    sample = _safe_int(features.get("historical_total_goals_sample"))
+    h2h_sample = _safe_int(features.get("historical_total_goals_sample"))
     over_count = _safe_int(features.get(f"historical_over_{line_tag}_count"), -1)
-    if sample < 5 or over_count < 0 or over_count > sample:
-        # Backwards compatibility for the old, stricter 3+ goal flag on O0.5;
-        # it still must pass the separate recent-form checks below.
-        if not (
-            market == "over_0_5_goals"
-            and features.get("historical_high_goal_match") is True
-            and _safe_int(features.get("historical_high_goal_sample")) >= 5
-        ):
-            return False
-        hits = 4
+    h2h_hits = -1
+    if h2h_sample >= 5 and 0 <= over_count <= h2h_sample:
+        h2h_hits = over_count if direction == "over" else h2h_sample - over_count
+
+    home_sample = _safe_int(features.get("home_form_matches_sample"))
+    away_sample = _safe_int(features.get("away_form_matches_sample"))
+    home_over = _valid_rate(features, f"home_form_over_{line_tag}_rate")
+    away_over = _valid_rate(features, f"away_form_over_{line_tag}_rate")
+    form_hits = None
+    if home_over is not None and away_over is not None:
+        form_hits = (
+            (home_over, away_over) if direction == "over"
+            else (1.0 - home_over, 1.0 - away_over)
+        )
+
+    old_form_support = bool(
+        home_sample >= 5 and away_sample >= 5 and form_hits is not None
+        and min(form_hits) >= 0.40 and sum(form_hits) / 2 >= 0.60
+    )
+    strong_form_support = bool(
+        home_sample >= 5 and away_sample >= 5 and form_hits is not None
+        and min(form_hits) >= 0.60 and sum(form_hits) / 2 >= 0.70
+    )
+    if h2h_hits >= 4 and old_form_support:
+        routes.append(f"H2H {direction} {line_tag.replace('_', '.')}: {h2h_hits}/{h2h_sample} plus recent form")
+    if strong_form_support:
+        routes.append(f"independent recent totals form: each >=3/5 and mean >=70% at {direction} {line_tag.replace('_', '.')}")
+    return routes
+
+
+def _football_market_evidence(
+    market: str,
+    features: dict[str, Any],
+    market_point: Any = None,
+    selection_side: Any = None,
+) -> bool:
+    return bool(_football_market_routes(market, features, market_point, selection_side))
+
+
+def football_evidence_assessment(fixture: dict[str, Any]) -> dict[str, Any]:
+    """Explain the passing route or the missing evidence for a quoted market."""
+    sport = str(fixture.get("sport_type", "")).strip().lower()
+    market = _market_key(fixture)
+    features = _features(fixture)
+    if sport != "football":
+        return {
+            "qualified": False, "route": None, "alternatives": [],
+            "reason": "The sport-specific evidence route is not represented in the football assessor.",
+        }
+    routes = _football_market_routes(
+        market, features, fixture.get("market_point"), fixture.get("selection_side")
+    )
+    if routes:
+        return {
+            "qualified": True, "route": routes[0], "alternatives": routes[1:],
+            "reason": "Evidence route passed: " + routes[0] + ".",
+        }
+
+    if market in FOOTBALL_1X2_MARKETS or market == "double_chance_1x":
+        h2h_n = _safe_int(features.get("historical_1x2_sample"))
+    elif market in {"btts_yes", "btts_no"}:
+        h2h_n = _safe_int(features.get("historical_btts_sample"))
+    elif market in FOOTBALL_SPREAD_MARKETS:
+        h2h_n = _safe_int(features.get("historical_spread_sample"))
+    elif re.fullmatch(r"(over|under)_(0_5|1_5|2_5)_goals", market):
+        h2h_n = _safe_int(features.get("historical_total_goals_sample"))
     else:
-        hits = over_count if direction == "over" else sample - over_count
-    if hits < 4:
-        return False
-
-    # Keep the hard 4-of-5 H2H threshold and require a separate five-match
-    # sample for each team. Recent scoreline trends must support the selected
-    # direction overall without either team's trend strongly contradicting it.
-    home_form_sample = _safe_int(features.get("home_form_matches_sample"))
-    away_form_sample = _safe_int(features.get("away_form_matches_sample"))
-    home_over_rate = _safe_float(features.get(f"home_form_over_{line_tag}_rate"), -1)
-    away_over_rate = _safe_float(features.get(f"away_form_over_{line_tag}_rate"), -1)
-    if (
-        home_form_sample < 5
-        or away_form_sample < 5
-        or not 0.0 <= home_over_rate <= 1.0
-        or not 0.0 <= away_over_rate <= 1.0
-    ):
-        return False
-    home_form_hit = home_over_rate if direction == "over" else 1.0 - home_over_rate
-    away_form_hit = away_over_rate if direction == "over" else 1.0 - away_over_rate
-    return min(home_form_hit, away_form_hit) >= 0.40 and (home_form_hit + away_form_hit) / 2 >= 0.60
-
+        h2h_n = 0
+    home_n = _safe_int(features.get("home_form_matches_sample"))
+    away_n = _safe_int(features.get("away_form_matches_sample"))
+    home_venue_n = _safe_int(features.get("home_team_home_games_sample"))
+    away_venue_n = _safe_int(features.get("away_team_away_games_sample"))
+    if market in FOOTBALL_1X2_MARKETS:
+        criteria = {
+            "home_win_1x2": "H2H 4/5, or 5 home games with >=80% home wins plus 5 away games with >=60% away losses",
+            "away_win_1x2": "H2H 4/5, or 5 away games with >=80% away wins plus 5 home games with >=60% home losses",
+            "draw_1x2": "H2H 4/5, or both venue splits with >=60% draws in five games",
+        }[market]
+        return {"qualified": False, "route": None, "alternatives": [],
+                "reason": f"No 1X2 route passed. Required: {criteria}. Samples now: H2H={h2h_n}, home-at-home={home_venue_n}, away-away={away_venue_n}."}
+    if market == "double_chance_1x":
+        return {"qualified": False, "route": None, "alternatives": [],
+                "reason": f"No 1X route passed. Need top-three/bottom-five standings, H2H 1X >=4/5, or venue form >=4/5 home-unbeaten and >=3/5 away losses. Samples now: H2H={h2h_n}, home-at-home={home_venue_n}, away-away={away_venue_n}."}
+    if market in {"btts_yes", "btts_no"}:
+        selected = "BTTS Yes >=60% for both teams" if market == "btts_yes" else "BTTS No >=60% for both teams"
+        return {"qualified": False, "route": None, "alternatives": [],
+                "reason": f"No BTTS route passed. Need H2H >=4/5 or {selected}, with at least five recent games per team. Samples now: H2H={h2h_n}, teams={home_n}/{away_n}."}
+    if market in FOOTBALL_SPREAD_MARKETS:
+        selected_n = _safe_int(features.get("selected_spread_form_sample"))
+        opponent_n = _safe_int(features.get("opponent_spread_form_sample"))
+        return {"qualified": False, "route": None, "alternatives": [],
+                "reason": f"No spread route passed at the exact quoted line. Need H2H >=4/5 plus recent form, or five samples with selected cover >=80% and opponent <=20%. Samples now: H2H={h2h_n}, form={selected_n}/{opponent_n}."}
+    if re.fullmatch(r"(over|under)_(0_5|1_5|2_5)_goals", market):
+        return {"qualified": False, "route": None, "alternatives": [],
+                "reason": f"No totals route passed at the exact line. Need H2H >=4/5 plus form, or five games per team with >=60% selected-line hits for each and mean >=70%. Samples now: H2H={h2h_n}, teams={home_n}/{away_n}."}
+    return {"qualified": False, "route": None, "alternatives": [],
+            "reason": "No football evidence rule is configured for this market."}
 
 def _strategy_matches(fixture: dict[str, Any]) -> bool:
     sport = str(fixture.get("sport_type", "")).strip().lower()
@@ -255,50 +403,85 @@ def _strategy_matches(fixture: dict[str, Any]) -> bool:
 
 
 def _heuristic_score(fixture: dict[str, Any]) -> float:
-    """A 0–100 ordering signal based on supplied sample evidence only."""
+    """A 0–100 ordering signal from a passing evidence route, not a probability."""
     sport = str(fixture.get("sport_type", "")).strip().lower()
     market = _market_key(fixture)
     f = _features(fixture)
 
     if sport == "football":
+        routes = _football_market_routes(
+            market, f, fixture.get("market_point"), fixture.get("selection_side")
+        )
+        if not routes:
+            return 0.0
+        route = routes[0]
         if market == "double_chance_1x":
-            position = _safe_int(f.get("home_table_position"), 3)
-            return min(99.0, 78.0 + max(0, 3 - position) * 2.0)
+            if route.startswith("standings:"):
+                position = _safe_int(f.get("home_table_position"), 3)
+                return min(92.0, 78.0 + max(0, 3 - position) * 2.0)
+            if route.startswith("H2H"):
+                hits = _safe_int(f.get("historical_home_win_count")) + _safe_int(f.get("historical_draw_count"))
+                return min(89.0, 70.0 + max(0, hits - 3) * 5.0)
+            support = (
+                (_valid_rate(f, "home_team_home_unbeaten_rate") or 0.0)
+                + (_valid_rate(f, "away_team_away_loss_rate") or 0.0)
+            ) / 2
+            return min(89.0, 70.0 + max(0.0, support - 0.70) * 40.0)
         if market in FOOTBALL_1X2_MARKETS:
             count_key = {
                 "home_win_1x2": "historical_home_win_count",
                 "draw_1x2": "historical_draw_count",
                 "away_win_1x2": "historical_away_win_count",
             }[market]
-            hits = _safe_int(f.get(count_key))
-            sample = _safe_int(f.get("historical_1x2_sample"), 5)
-            return min(99.0, 70.0 + max(0, hits - 3) * 5.0 + max(0, sample - 5))
+            if route.startswith("H2H"):
+                hits = _safe_int(f.get(count_key))
+                return min(89.0, 70.0 + max(0, hits - 3) * 5.0)
+            rate_keys = {
+                "home_win_1x2": ("home_team_home_win_rate", "away_team_away_loss_rate"),
+                "away_win_1x2": ("away_team_away_win_rate", "home_team_home_loss_rate"),
+                "draw_1x2": ("home_team_home_draw_rate", "away_team_away_draw_rate"),
+            }[market]
+            rates = [_valid_rate(f, key) for key in rate_keys]
+            if any(rate is None for rate in rates):
+                return 0.0
+            support = sum(rate for rate in rates if rate is not None) / 2
+            baseline = 0.60 if market == "draw_1x2" else 0.70
+            return min(89.0, 70.0 + max(0.0, support - baseline) * 40.0)
         if market in FOOTBALL_SPREAD_MARKETS:
-            h2h_hits = _safe_int(f.get("historical_spread_cover_count"))
-            selected_rate = _safe_float(f.get("selected_spread_form_rate"))
-            opponent_rate = _safe_float(f.get("opponent_spread_form_rate"))
+            selected_rate = _valid_rate(f, "selected_spread_form_rate")
+            opponent_rate = _valid_rate(f, "opponent_spread_form_rate")
+            if selected_rate is None or opponent_rate is None:
+                return 0.0
             support = max(0.0, selected_rate - 0.70) + max(0.0, 0.30 - opponent_rate)
-            return min(99.0, 70.0 + max(0, h2h_hits - 3) * 5.0 + support * 15.0)
+            h2h_bonus = max(0, _safe_int(f.get("historical_spread_cover_count")) - 3) * 5.0 if route.startswith("quoted-line H2H") else 0.0
+            return min(89.0, 70.0 + h2h_bonus + support * 15.0)
         if market in {"btts_yes", "btts_no"}:
-            sample = max(1, _safe_int(f.get("historical_btts_sample"), 5))
-            count = _safe_int(f.get("historical_btts_yes_count"))
-            hits = count if market == "btts_yes" else sample - count
-            return min(99.0, 70.0 + max(0, hits - 3) * 5.0 + max(0, sample - 5))
+            if route.startswith("H2H"):
+                sample = _safe_int(f.get("historical_btts_sample"))
+                yes_count = _safe_int(f.get("historical_btts_yes_count"))
+                hits = yes_count if market == "btts_yes" else sample - yes_count
+                return min(89.0, 70.0 + max(0, hits - 3) * 5.0)
+            rates = [_valid_rate(f, "home_form_btts_yes_rate"), _valid_rate(f, "away_form_btts_yes_rate")]
+            if any(rate is None for rate in rates):
+                return 0.0
+            selected = [rate if market == "btts_yes" else 1.0 - rate for rate in rates if rate is not None]
+            return min(89.0, 70.0 + max(0.0, sum(selected) / 2 - 0.60) * 40.0)
         match = re.fullmatch(r"(over|under)_(0_5|1_5|2_5)_goals", market)
         if match:
             direction, line_tag = match.groups()
-            sample = max(1, _safe_int(f.get("historical_total_goals_sample"), 5))
-            count = _safe_int(f.get(f"historical_over_{line_tag}_count"))
-            hits = count if direction == "over" else sample - count
-            home_over_rate = _safe_float(f.get(f"home_form_over_{line_tag}_rate"), -1)
-            away_over_rate = _safe_float(f.get(f"away_form_over_{line_tag}_rate"), -1)
-            form_rate = (
-                (home_over_rate + away_over_rate) / 2
-                if direction == "over"
-                else (2.0 - home_over_rate - away_over_rate) / 2
+            over_count = _safe_int(f.get(f"historical_over_{line_tag}_count"), -1)
+            sample = _safe_int(f.get("historical_total_goals_sample"))
+            h2h_hits = over_count if direction == "over" else sample - over_count
+            home_over = _valid_rate(f, f"home_form_over_{line_tag}_rate")
+            away_over = _valid_rate(f, f"away_form_over_{line_tag}_rate")
+            if home_over is None or away_over is None:
+                return 0.0
+            selected = (
+                (home_over + away_over) / 2 if direction == "over"
+                else (2.0 - home_over - away_over) / 2
             )
-            form_bonus = max(0.0, form_rate - 0.60) * 15.0
-            return min(99.0, 70.0 + max(0, hits - 3) * 5.0 + max(0, sample - 5) + form_bonus)
+            h2h_bonus = max(0, h2h_hits - 3) * 5.0 if route.startswith("H2H") else 0.0
+            return min(89.0, 70.0 + h2h_bonus + max(0.0, selected - 0.60) * 15.0)
         return 0.0
 
     if sport == "basketball":
@@ -320,7 +503,6 @@ def _heuristic_score(fixture: dict[str, Any]) -> float:
         opponent_rank = _safe_int(f.get("opponent_rank"), 76)
         return min(99.0, 70.0 + max(0, 15 - favorite_rank) * 0.65 + min(12, max(0, opponent_rank - 75) / 5))
     return 0.0
-
 
 def _iso_utc(value: Any) -> str:
     if not value:
@@ -359,7 +541,17 @@ def prepare_fixture(raw: dict[str, Any]) -> dict[str, Any] | None:
             return None
         point = raw.get("market_point")
         point_value = None if point in (None, "") else str(_decimal(point))
-        note = str(raw.get("analysis_note", "")).strip() or None
+        note = str(raw.get("analysis_note", "")).strip()
+        if sport == "football":
+            routes = _football_market_routes(
+                market_key, features, raw.get("market_point"), raw.get("selection_side")
+            )
+            if routes:
+                route_note = "Evidence route: " + routes[0] + "."
+                if len(routes) > 1:
+                    route_note += " Also passed: " + "; ".join(routes[1:]) + "."
+                note = (note + " " + route_note).strip()
+        note = note or None
         source = str(raw.get("source", "licensed-feed")).strip() or "licensed-feed"
         return {
             "sport_type": sport,

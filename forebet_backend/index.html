@@ -1,0 +1,852 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>K96 PICKS — Smart Pick Engine</title>
+<style>
+:root{
+  --bg:#0a0e0c; --bg2:#0d1210; --panel:#121815; --panel2:#151c18; --panel3:#1a231e;
+  --line:#233028; --line2:#2c3b32;
+  --txt:#e9f0ea; --soft:#c2d2c7; --mut:#7e9184; --faint:#5d6d62;
+  --green:#22a86f; --green2:#4ade9a; --red:#ef4444; --gold:#d9b34a; --blue:#5aa7d8;
+  --purple:#8f7dd8; --pink:#e06ba5; --cyan:#3fb8af; --orange:#e0a458;
+  --sh:0 6px 24px rgba(0,0,0,.35);
+}
+*{ box-sizing:border-box; }
+html,body{ height:100%; }
+body{
+  margin:0; background:var(--bg); color:var(--txt);
+  font-family:"Inter","Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  font-size:14px; -webkit-font-smoothing:antialiased;
+}
+button{ font-family:inherit; }
+
+/* ─── layout ─── */
+#app{ display:flex; min-height:100vh; }
+aside{
+  width:236px; flex:0 0 236px; background:var(--bg2); border-right:1px solid var(--line);
+  display:flex; flex-direction:column; padding:20px 14px; gap:6px;
+}
+.brand{ display:flex; align-items:center; gap:11px; padding:2px 8px 18px; border-bottom:1px solid var(--line); margin-bottom:12px; }
+.brand img{ width:40px; height:40px; border-radius:10px; box-shadow:var(--sh); }
+.brand .t1{ font-size:15px; font-weight:800; letter-spacing:.6px; }
+.brand .t2{ font-size:10.5px; color:var(--mut); letter-spacing:1.4px; text-transform:uppercase; margin-top:2px; }
+.navItem{
+  display:flex; align-items:center; gap:11px; padding:10px 12px; border-radius:10px;
+  color:var(--soft); font-weight:600; font-size:13.5px; cursor:pointer; border:1px solid transparent;
+  user-select:none; transition:background .15s ease;
+}
+.navItem:hover{ background:var(--panel); }
+.navItem.active{ background:var(--panel2); border-color:var(--line2); color:var(--green2); }
+.navItem .ic{ width:20px; text-align:center; }
+.sideFoot{ margin-top:auto; padding-top:14px; border-top:1px solid var(--line); display:flex; flex-direction:column; gap:10px; }
+.connRow{ display:flex; align-items:center; gap:8px; font-size:11.5px; color:var(--mut); padding:0 8px; }
+.dot{ width:8px; height:8px; border-radius:50%; background:var(--green2); box-shadow:0 0 8px var(--green2); }
+.dot.err{ background:var(--red); box-shadow:0 0 8px var(--red); }
+.demoToggle{
+  display:flex; align-items:center; justify-content:space-between; padding:9px 12px; border-radius:10px;
+  background:var(--panel2); border:1px solid var(--line2); font-size:11.5px; color:var(--mut); cursor:pointer; user-select:none;
+}
+.demoToggle b{ color:var(--gold); }
+.demoToggle.live b{ color:var(--green2); }
+
+main{ flex:1; min-width:0; padding:24px 28px 60px; }
+header.top{ display:flex; align-items:center; gap:16px; margin-bottom:22px; }
+h1.page{ font-size:19px; font-weight:800; margin:0; letter-spacing:.3px; }
+.pageSub{ color:var(--mut); font-size:12px; margin-top:3px; }
+.topSpace{ flex:1; }
+.dateBox input{ background:var(--panel2); border:1px solid var(--line2); border-radius:10px; color:var(--txt);
+  padding:8px 12px; font-family:inherit; font-size:13px; }
+.pill{ background:var(--panel3); border:1px solid var(--line2); border-radius:20px; padding:5px 12px; font-size:12px; color:var(--soft); }
+.pill.accent{ color:var(--green2); border-color:var(--green); background:rgba(74,222,154,.08); }
+
+/* ─── buttons ─── */
+.btn{
+  border-radius:10px; padding:10px 18px; font-weight:700; font-size:13px; cursor:pointer;
+  border:1px solid var(--line2); background:var(--panel2); color:var(--soft);
+  letter-spacing:.3px; transition:all .15s ease; white-space:nowrap;
+}
+.btn:hover{ border-color:var(--green); color:var(--txt); }
+.btn:disabled{ opacity:.55; cursor:default; }
+.btn.primary{
+  background:linear-gradient(160deg,#2fc584,#1a9d63); border-color:transparent; color:#04120a;
+  box-shadow:0 4px 18px rgba(46,197,132,.28);
+}
+.btn.primary:hover{ filter:brightness(1.07); color:#02100a; }
+.btn.small{ padding:7px 13px; font-size:12px; }
+.toolbar{ display:flex; align-items:center; gap:10px; margin-bottom:18px; flex-wrap:wrap; }
+
+/* ─── tabs ─── */
+section{display:none;}
+section.active{display:block; animation:fadein .2s ease;}
+@keyframes fadein{ from{opacity:0; transform:translateY(4px);} to{opacity:1;} }
+
+/* ─── spinner ─── */
+.loadWrap{ display:flex; flex-direction:column; align-items:center; justify-content:center; gap:18px; padding:86px 20px; }
+.spinner{ width:58px; height:58px; border-radius:50%; border:4px solid var(--line); border-top-color:var(--green2);
+  animation:k96spin .9s linear infinite; }
+@keyframes k96spin{ to{ transform:rotate(360deg); } }
+.loadTxt{ color:var(--soft); font-weight:700; font-size:15px; letter-spacing:.3px; }
+.loadSub{ color:var(--mut); font-size:12px; }
+
+/* ─── pick cards ─── */
+.pk{
+  display:grid; grid-template-columns:42px 1fr auto auto; gap:14px; align-items:center;
+  background:var(--panel2); border:1px solid var(--line); border-left:3px solid var(--green);
+  border-radius:14px; padding:13px 16px; margin-bottom:10px; box-shadow:var(--sh);
+}
+.pk .rank{ width:34px; height:34px; border-radius:10px; background:var(--panel3); border:1px solid var(--line2);
+  display:flex; align-items:center; justify-content:center; font-weight:800; color:var(--green2); font-size:13px; }
+.pkWho b{ display:block; font-size:14.5px; letter-spacing:.2px; }
+.pkWho .meta{ color:var(--mut); font-size:11.5px; margin-top:4px; display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+.chip{ display:inline-block; padding:2.5px 9px; border-radius:6px; font-size:10.8px; font-weight:800; letter-spacing:.4px; }
+.cDC{ background:#12283a; color:var(--blue); } .cDNB{ background:#241d3d; color:var(--purple); }
+.c1X2{ background:#0d2f1e; color:var(--green2); } .cTot{ background:#2e2410; color:var(--gold); }
+.cBTTS{ background:#331423; color:var(--pink); } .cEH{ background:#0e2b28; color:var(--cyan); }
+.cWin{ background:#33210e; color:var(--orange); }
+.pkWhy{ margin-top:10px; padding-top:10px; border-top:1px dashed var(--line2); font-size:12px; color:var(--soft); line-height:1.75; }
+.pkWhy .r{ display:flex; gap:8px; } .pkWhy .r span:first-child{ color:var(--green2); }
+.pkBet{ text-align:right; min-width:110px; }
+.pkBet .tip{ font-size:15.5px; font-weight:800; letter-spacing:.4px; }
+.pkBet .fb{ color:var(--mut); font-size:11px; margin-top:3px; }
+.confBox{ min-width:74px; text-align:center; }
+.confNum{ font-size:20px; font-weight:800; color:var(--green2); }
+.confBar{ height:4px; background:var(--panel3); border-radius:4px; margin-top:5px; overflow:hidden; }
+.confBar i{ display:block; height:100%; background:linear-gradient(90deg,var(--green),var(--green2)); border-radius:4px; }
+.grpH{ display:flex; align-items:baseline; gap:10px; margin:20px 2px 10px; }
+.grpH b{ font-size:13px; letter-spacing:1.2px; text-transform:uppercase; color:var(--soft); }
+.grpH span{ color:var(--mut); font-size:11.5px; }
+.empty{ color:var(--mut); font-size:13px; text-align:center; padding:52px 16px; border:1px dashed var(--line2); border-radius:14px; line-height:1.9; }
+
+/* ─── results ─── */
+.ovlRow{ display:flex; gap:12px; flex-wrap:wrap; margin-bottom:16px; }
+.ovl{ background:var(--panel2); border:1px solid var(--line); border-radius:14px; padding:14px 18px; min-width:120px; box-shadow:var(--sh); }
+.ovl .n{ font-size:24px; font-weight:800; }
+.ovl .l{ font-size:10.5px; color:var(--mut); text-transform:uppercase; letter-spacing:1px; margin-top:4px; }
+.mktRow{ display:flex; gap:8px; flex-wrap:wrap; margin-bottom:18px; }
+.dayblock{ margin-bottom:20px; }
+.dayhead{ display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
+.dayhead b{ font-size:14px; letter-spacing:.4px; }
+.rrow{ display:flex; align-items:center; gap:12px; padding:9px 12px; border:1px solid var(--line); background:var(--panel);
+  border-radius:10px; margin-bottom:6px; }
+.rrow .m{ flex:1; min-width:0; }
+.rrow .m b{ display:block; font-size:13.5px; font-weight:600; }
+.rrow .m span{ color:var(--mut); font-size:11.5px; }
+.reschip{ font-weight:800; padding:3.5px 11px; border-radius:7px; font-size:11px; letter-spacing:.5px; }
+.reschip.win{ background:#06351a; color:var(--green2); }
+.reschip.loss{ background:#3a1212; color:#fca5a5; }
+.reschip.push{ background:#232914; color:var(--gold); }
+.reschip.pending{ background:#2a3038; color:#94a3b8; }
+.rrow.rwin{ border-left:3px solid var(--green2); background:linear-gradient(90deg,rgba(74,222,154,.07),transparent 60%),var(--panel); }
+.rrow.rloss{ border-left:3px solid var(--red); background:linear-gradient(90deg,rgba(239,68,68,.07),transparent 60%),var(--panel); }
+.rrow.rpush{ border-left:3px solid var(--gold); }
+.rconf{ min-width:44px; text-align:right; color:var(--soft); font-weight:800; }
+.genpct{ display:flex; align-items:center; justify-content:space-between; gap:16px; margin-top:18px;
+  padding:16px 20px; border-radius:14px; font-weight:800; box-shadow:var(--sh); }
+.genpct.good{ background:linear-gradient(135deg,#065f46,#04382a); border:1px solid var(--green); }
+.genpct.bad{ background:linear-gradient(135deg,#641916,#401010); border:1px solid var(--red); }
+.genpct.mid{ background:#1c231c; border:1px solid var(--gold); }
+.genpct .gpL{ font-size:12px; color:var(--soft); letter-spacing:1px; text-transform:uppercase; }
+.genpct .gpNum{ font-size:32px; letter-spacing:.5px; }
+.genpct .gpS{ font-size:12px; color:var(--mut); font-weight:600; }
+
+/* ─── analytics / settings ─── */
+.card{ background:var(--panel2); border:1px solid var(--line); border-radius:14px; padding:16px 18px; margin-bottom:14px; box-shadow:var(--sh); max-width:760px; }
+.card h3{ margin:0 0 12px; font-size:11.5px; color:var(--mut); text-transform:uppercase; letter-spacing:1.2px; }
+.statRow{ display:flex; justify-content:space-between; padding:7px 0; border-bottom:1px dashed var(--line); font-size:13px; }
+.statRow:last-child{ border-bottom:none; }
+.setRow{ display:flex; align-items:center; justify-content:space-between; gap:16px; padding:12px 0; border-bottom:1px dashed var(--line); }
+.setRow:last-child{ border-bottom:none; }
+.setTxt b{ display:block; font-size:14px; font-weight:600; }
+.setTxt span{ color:var(--mut); font-size:12px; }
+.select, input[type=number]{ background:var(--panel3); border:1px solid var(--line2); border-radius:10px; padding:9px 12px;
+  color:var(--txt); font-family:inherit; font-size:13px; }
+input[type=number]{ width:84px; text-align:center; font-weight:700; }
+input[type=datetime] { }
+input[type=date]{ background:var(--panel3); border:1px solid var(--line2); border-radius:10px; padding:8px 12px; color:var(--txt); font-family:inherit; color-scheme:dark; }
+input[type=checkbox]{ transform:scale(1.2); accent-color:var(--green); }
+
+/* ─── log ─── */
+#log{ background:#070b09; border:1px solid var(--line); border-radius:14px; padding:16px 18px;
+  font-family:"JetBrains Mono","Cascadia Code",Consolas,Menlo,monospace;
+  font-size:12px; color:var(--soft); white-space:pre-wrap; max-height:70vh; overflow:auto; line-height:1.7; }
+
+#toast{ display:none; position:fixed; bottom:26px; left:50%; transform:translateX(-50%);
+  background:linear-gradient(160deg,#2fc584,#1a9d63); color:#02100a; font-weight:800; padding:11px 22px;
+  border-radius:12px; box-shadow:var(--sh); letter-spacing:.3px; font-size:13px; z-index:50; }
+
+/* ─── hamburger / drawer ─── */
+.mbar{ display:flex; align-items:center; gap:12px; margin:-6px 0 16px; }
+.hamb{ width:40px; height:40px; border-radius:10px; background:var(--panel2); border:1px solid var(--line2);
+  display:inline-flex; flex-direction:column; justify-content:center; align-items:center; gap:4px; cursor:pointer; padding:0; }
+.hamb i{ display:block; width:18px; height:2px; border-radius:2px; background:var(--soft); transition:transform .2s ease, opacity .2s ease; }
+.hamb:hover{ border-color:var(--green); } .hamb:hover i{ background:var(--green2); }
+.mbar .mbrand{ display:none; align-items:center; gap:9px; font-weight:800; letter-spacing:.6px; font-size:14px; }
+.mbar .mbrand img{ width:28px; height:28px; border-radius:7px; }
+#navBackdrop{ display:none; position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:39; }
+aside{ transition:width .2s ease, flex-basis .2s ease, transform .22s ease; }
+
+/* desktop: ☰ = kunja sidebar kuwa icons tu */
+body.collapsed aside{ width:64px; flex:0 0 64px; padding:14px 8px; }
+body.collapsed .brand .tx, body.collapsed .navItem span:not(.ic), body.collapsed .sideFoot .txt,
+body.collapsed .demoToggle span{ display:none; }
+body.collapsed .demoToggle{ justify-content:center; padding:9px 4px; font-size:9px; }
+body.collapsed .navItem{ justify-content:center; padding:10px 0; }
+
+/* simu/skrini ndogo: sidebar inakuwa drawer inayoteleza */
+@media (max-width:840px){
+  aside, body.collapsed aside{ position:fixed; top:0; left:0; bottom:0; z-index:40; width:252px; flex:none;
+    padding:20px 14px; transform:translateX(-105%); box-shadow:var(--sh); overflow-y:auto; }
+  body.collapsed .brand .tx, body.collapsed .navItem span, body.collapsed .sideFoot .txt,
+  body.collapsed .demoToggle span{ display:initial; }
+  body.collapsed .navItem{ justify-content:flex-start; padding:10px 12px; }
+  body.navOpen aside{ transform:none; }
+  body.navOpen #navBackdrop{ display:block; }
+  body.navOpen .hamb i:nth-child(1){ transform:translateY(6px) rotate(45deg); }
+  body.navOpen .hamb i:nth-child(2){ opacity:0; }
+  body.navOpen .hamb i:nth-child(3){ transform:translateY(-6px) rotate(-45deg); }
+  .mbar{ position:sticky; top:0; z-index:30; background:var(--bg); margin:-18px -14px 14px; padding:10px 14px;
+    border-bottom:1px solid var(--line); }
+  .mbar .mbrand{ display:flex; }
+  main{ padding:18px 14px 50px; }
+  header.top{ flex-wrap:wrap; }
+  .pk{ grid-template-columns:34px 1fr; }
+  .pkBet,.confBox{ text-align:left; }
+}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <aside>
+    <div class="brand">
+      <img src="/logo" alt="K96" onerror="this.style.display='none'">
+      <div class="tx"><div class="t1">K96 PICKS</div><div class="t2">Smart Engine</div></div>
+    </div>
+    <div class="navItem active" data-tab="tab_picks"><span class="ic">🎯</span><span>Picks</span></div>
+    <div class="navItem" data-tab="tab_slips"><span class="ic">🎫</span><span>Slips</span></div>
+    <div class="navItem" data-tab="tab_results"><span class="ic">🏁</span><span>Results</span></div>
+    <div class="navItem" data-tab="tab_stats"><span class="ic">📊</span><span>Analytics</span></div>
+    <div class="navItem" data-tab="tab_log"><span class="ic">🖥</span><span>Activity Log</span></div>
+    <div class="navItem" data-tab="tab_settings"><span class="ic">⚙️</span><span>Settings</span></div>
+    <div class="sideFoot">
+      <div class="demoToggle" id="btn_demo"><span>Data source</span><b id="demo_state">LIVE · Supabase</b></div>
+      <div class="connRow"><span class="dot" id="conn_dot"></span><span class="txt" id="conn_txt">Supabase connected</span></div>
+    </div>
+  </aside>
+
+  <div id="navBackdrop"></div>
+  <main>
+    <div class="mbar">
+      <button class="hamb" id="hamb" title="Menu" aria-label="Menu"><i></i><i></i><i></i></button>
+      <div class="mbrand"><img src="/logo" alt="" onerror="this.style.display='none'">K96 PICKS</div>
+      <div class="topSpace"></div>
+      <span class="pageSub" id="mbarTab">Picks</span>
+    </div>
+    <!-- ═══ PICKS ═══ -->
+    <section id="tab_picks" class="active">
+      <header class="top">
+        <div><h1 class="page">Eligible Picks</h1><div class="pageSub" id="pick_sub"></div></div>
+        <div class="topSpace"></div>
+        <div class="dateBox"><input type="date" id="pick_day" title="Siku ya kuchambua"></div>
+        <button class="btn" id="btn_today" style="padding:8px 12px">Leo</button>
+        <span class="pill accent" id="pick_mode">LIVE</span>
+      </header>
+      <div class="toolbar">
+        <button class="btn" id="btn_scrape">⬇ 1) Run Scraper (leo+jana)</button>
+        <button class="btn primary" id="btn_run">🔍 2) Run Engine (picks/slips)</button>
+        <button class="btn" id="btn_copy">📋 Copy for WhatsApp</button>
+        <span class="pill" id="set_pill"></span>
+      </div>
+      <div id="picks_host"><div class="empty">Bonyeza <b>1) Run Scraper</b> (scrape leo + results-zana) kisha <b>2) Run Engine</b> kwa picks/slips.</div></div>
+    </section>
+
+    <!-- ═══ RESULTS ═══ -->
+    <section id="tab_results">
+      <header class="top">
+        <div><h1 class="page">Results</h1><div class="pageSub">Predicted tips vs actual finals — this is how the engine learns.</div></div>
+        <div class="topSpace"></div>
+        <span class="pill accent" id="res_mode">LIVE</span>
+      </header>
+      <div class="toolbar">
+        <div class="dateBox"><input type="date" id="res_day"></div>
+        <button class="btn" id="btn_settle">🔄 Settle Yesterday</button>
+        <button class="btn small" id="btn_finals" style="display:none">🧪 Fabricated finals (demo)</button>
+      </div>
+      <div class="ovlRow" id="overall"></div>
+      <div class="mktRow" id="mktStats"></div>
+      <div id="resultsHost"></div>
+    </section>
+
+    <!-- ═══ SLIPS (Phase 5) ═══ -->
+    <section id="tab_slips">
+      <header class="top"><div><h1 class="page">Slips</h1>
+        <div class="pageSub">Optimal combinations — lowest risk inside your target odds range.</div></div></header>
+      <div id="slipsBox"><span class="empty">Zitajengwa na <b>2) Run Engine</b> baada ya scrape (odds za bookmaker zipo tayari).</span></div>
+      <div class="card"><h3>About risk</h3>
+        <div style="color:var(--muted);font-size:13px;line-height:1.6">
+        Every extra leg multiplies bookmaker margin <i>and</i> reduces joint probability.
+        10 legs each 90% ⇒ joint ≈ 35% only. So the builder prefers <b>fewer, higher-quality legs</b>,
+        inside the total-odds target you set under <b>Settings → Slip Builder</b>.</div></div>
+    </section>
+
+    <!-- ═══ ANALYTICS ═══ -->
+    <section id="tab_stats">
+      <header class="top"><div><h1 class="page">Analytics</h1><div class="pageSub">Engine performance & cached match-days.</div></div></header>
+      <div class="card"><h3>Hit rate · all-time by market</h3><div id="statsBox"><span class="empty">—</span></div></div>
+      <div class="card"><h3>Cached days in Supabase</h3><div id="daysBox"><span class="empty">—</span></div></div>
+      <div class="card"><h3>Calibration — predicted vs actual (Phase 6)</h3>
+        <div id="calibBox"><span class="empty">Will appear after ≥ a few settled picks (RUN schema_v2.sql first).</span></div></div>
+      <div class="card"><h3>Recent slips</h3><div id="slipHist"><span class="empty">—</span></div></div>
+    </section>
+
+    <!-- ═══ LOG ═══ -->
+    <section id="tab_log">
+      <header class="top"><div><h1 class="page">Activity Log</h1><div class="pageSub">Technical trace of the last engine run.</div></div></header>
+      <pre id="log">No activity yet.</pre>
+    </section>
+
+    <!-- ═══ SETTINGS ═══ -->
+    <section id="tab_settings">
+      <header class="top"><div><h1 class="page">Settings</h1><div class="pageSub">Saved automatically on this device.</div></div></header>
+      <div class="card">
+        <h3>Engine</h3>
+        <div class="setRow">
+          <div class="setTxt"><b>Enrich with H2H</b><span>Fetches head-to-head for the engine shortlist only (max 40 matches, ~3 min)</span></div>
+          <input type="checkbox" id="enrich" checked>
+        </div>
+        <div class="setRow">
+          <div class="setTxt"><b>Slate date</b><span>Which match-day to analyse</span></div>
+          <input type="date" id="day">
+        </div>
+        <div class="setRow">
+          <div class="setTxt"><b>Min confidence</b><span>Recommended ≥ 80 — adaptive engine may widen to fill 3–10 picks</span></div>
+          <input type="number" id="minp" value="80" min="50" max="99">
+        </div>
+      </div>
+      <div class="card">
+        <h3>Slip builder (advanced)</h3>
+        <div class="setRow"><div class="setTxt"><b>Leg odds min / max</b><span>Legs outside this range are ignored (useless or too risky)</span></div>
+          <input type="number" id="s_legmin" step="0.01" min="1.01" max="3" style="width:80px">
+          <input type="number" id="s_legmax" step="0.01" min="1.01" max="10" style="width:80px"></div>
+        <div class="setRow"><div class="setTxt"><b>Slip total odds target</b><span>Default 1.85 – 2.50</span></div>
+          <input type="number" id="s_slipmin" step="0.01" style="width:80px">
+          <input type="number" id="s_slipmax" step="0.01" style="width:80px"></div>
+        <div class="setRow"><div class="setTxt"><b>Max legs</b><span>Upper limit if set to auto</span></div>
+          <input type="number" id="s_maxlegs" min="1" max="20" style="width:80px"></div>
+        <div class="setRow"><div class="setTxt"><b>Force exactly N legs</b><span>Leave empty for auto (risk-optimized)</span></div>
+          <input type="number" id="s_forcelegs" min="1" max="20" placeholder="auto" style="width:80px"></div>
+        <div class="setRow"><div class="setTxt"><b>Min leg probability</b><span>Default 0.75 — legs weaker than this are never used</span></div>
+          <input type="number" id="s_minprob" step="0.01" min="0.5" max="0.99" style="width:80px"></div>
+        <div class="setRow"><div class="setTxt"><b>Block friendlies</b><span>Club friendlies are analysed but never tipped</span></div>
+          <input type="checkbox" id="s_blockfr" checked></div>
+        <div class="setRow"><div class="setTxt"></div><button class="btn small" id="btn_set_save">Save slip settings</button></div>
+      </div>
+      <div class="card">
+        <h3>Testing tools (demo)</h3>
+        <div class="setRow">
+          <div class="setTxt"><b>Seed sample fixtures to Supabase</b><span>Writes 7 test matches under “K96 TEST” leagues and runs the real engine on them</span></div>
+          <button class="btn small" id="btn_seed">Seed to DB</button>
+        </div>
+        <div class="setRow">
+          <div class="setTxt"><b>Fabricated finals + settle</b><span>Applies sample final scores and settles results for the selected results date</span></div>
+          <button class="btn small" id="btn_finals2">Fabricate finals</button>
+        </div>
+        <div class="setRow">
+          <div class="setTxt"><b>Remove all test data</b><span>Deletes every “K96 TEST” match, pick and day-cache row</span></div>
+          <button class="btn small" id="btn_cleanup">🧹 Clean up</button>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div id="toast">Copied ✓</div>
+
+<script>
+/* ═══════════════ helpers ═══════════════ */
+const $ = q => document.querySelector(q);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+// Tarehe kwa saa za Afrika Mashariki (EAT, UTC+3) — si UTC, si saa ya PC iliyokosewa
+const _eat = (ms) => new Date(ms + 3 * 3600e3).toISOString().slice(0,10);
+const todayISO = () => _eat(Date.now());
+const ydayISO  = () => _eat(Date.now() - 864e5);
+async function api(u, opt){
+  let r;
+  try{ r = await fetch(u, opt); }
+  catch(e){ setConn(false, "Server haijibu"); return {ok:false, error:"Server ya K96 haijibu — fungua K96_START.bat (dirisha lake liache wazi) kisha refresh."}; }
+  const t = await r.text();
+  try{ return JSON.parse(t); }catch{ return {ok:false, error:`HTTP ${r.status}: ${t.slice(0,160)}`}; }
+}
+function setConn(ok, txt){
+  const d = document.getElementById("conn_dot"), x = document.getElementById("conn_txt");
+  if (d) d.className = ok ? "dot" : "dot err"; if (x && txt) x.textContent = txt;
+}
+// JS error yoyote → bango jekundu juu (hakuna skrini tupu kimya)
+window.addEventListener("error", e => showFatal(e.message + (e.lineno ? " (line " + e.lineno + ")" : "")));
+window.addEventListener("unhandledrejection", e => showFatal(String(e.reason && e.reason.message || e.reason)));
+function showFatal(msg){
+  let b = document.getElementById("fatalBar");
+  if (!b){ b = document.createElement("div"); b.id = "fatalBar";
+    b.style.cssText = "position:fixed;top:0;left:0;right:0;z-index:99;background:#7f1d1d;color:#fff;padding:10px 16px;font:13px Segoe UI,Arial;white-space:pre-wrap";
+    document.body.appendChild(b); }
+  b.textContent = "⚠ Hitilafu: " + msg + "  — bonyeza F5 (refresh). Ikiendelea, tuma picha hii.";
+}
+const ICON = {football:"⚽", basketball:"🏀", tennis:"🎾"};
+const MKTCLS = {"1X2":"c1X2","Double Chance":"cDC","Draw No Bet":"cDNB",
+                "Total Goals":"cTot","BTTS":"cBTTS","Handicap +2":"cEH","Winner":"cWin"};
+const SPTSW = {"football":"FOOTBALL","basketball":"BASKETBALL","tennis":"TENNIS"};
+
+/* ═══════════════ settings (persisted) ═══════════════ */
+const CFG = { enrich:true, day:todayISO(), minp:80 };
+try{ const s = JSON.parse(localStorage.getItem("k96_settings_v3") || "{}"); delete s.day; Object.assign(CFG, s); }catch{}
+let DAY_PINNED = false;            // true = mtumiaji amechagua tarehe mwenyewe (session hii tu)
+function saveCfg(){ const s = {...CFG}; delete s.day; localStorage.setItem("k96_settings_v3", JSON.stringify(s)); syncPill(); }
+function setDay(d, pinned){
+  CFG.day = d || todayISO(); DAY_PINNED = !!pinned && CFG.day !== todayISO();
+  $("#day").value = CFG.day; const pd = document.getElementById("pick_day"); if (pd) pd.value = CFG.day;
+  syncPill();
+}
+$("#enrich").checked = !!CFG.enrich;
+$("#day").value = CFG.day || todayISO();
+$("#minp").value = CFG.minp ?? 80;
+["enrich","day","minp"].forEach(id=>{
+  $("#"+id).addEventListener("change", ()=>{
+    CFG[id] = id === "enrich" ? $("#enrich").checked
+            : id === "minp"   ? parseInt($("#minp").value) || 80
+            : $("#day").value || todayISO();
+    if (id === "day") setDay(CFG.day, true);
+    saveCfg();
+  });
+});
+function syncPill(){
+  $("#set_pill").textContent = `📅 ${CFG.day} · ≥${CFG.minp}% · H2H ${CFG.enrich ? "on" : "off"}`;
+}
+syncPill();
+
+/* ═══════════════ tabs ═══════════════ */
+document.querySelectorAll(".navItem").forEach(el=> el.onclick = ()=>{
+  document.querySelectorAll(".navItem").forEach(x=>x.classList.remove("active"));
+  el.classList.add("active");
+  document.querySelectorAll("section").forEach(s=>s.classList.remove("active"));
+  $("#"+el.dataset.tab).classList.add("active");
+  if (el.dataset.tab === "tab_results") loadResults();
+  if (el.dataset.tab === "tab_stats")   { refreshStatus(); loadCalibration(); }
+  if (el.dataset.tab === "tab_slips")   loadSlips();
+});
+
+/* ═══════════════ calibration chart (Phase 6) ═══════════════ */
+async function loadCalibration(){
+  const d = await api("/api/calibration");
+  const box = $("#calibBox");
+  if (!d.buckets || !d.buckets.length){
+    box.innerHTML = `<span class="empty">Chukua: settles picks ≥ chache zapeleka — wewe RUN schema_v2.sql first.</span>`;
+  } else {
+    const rows = d.buckets.filter(b => b.n >= 2 && b.avg_pred != null && b.actual != null);
+    const W = 560, H = 220, P = 30;
+    const xi = p => P + p * (W - 2 * P);
+    const maxY = 1.0;
+    const yi = v => H - P - v / maxY * (H - 2 * P);
+    let bars = "";
+    for (const b of rows){
+      const cx = xi((b.bucket - 0.5) / 20);
+      const y1 = yi(b.avg_pred), y2 = yi(b.actual);
+      const good = Math.abs(b.avg_pred - b.actual) <= 0.05;
+      bars += `<circle cx="${cx}" cy="${y1}" r="4" fill="#4a9ed5" title="pred ${(b.avg_pred*100).toFixed(0)}%"/>
+               <circle cx="${cx}" cy="${y2}" r="5" fill="${good ? "#2fc584" : "#e2c14d"}"/>
+               <line x1="${cx}" y1="${y1}" x2="${cx}" y2="${y2}" stroke="#334" stroke-dasharray="2 2"/>
+               <text x="${cx}" y="${H - 8}" fill="#7e9184" font-size="10" text-anchor="middle">${Math.round(b.avg_pred*100)}%</text>`;
+    }
+    box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:660px">
+      <line x1="${P}" y1="${yi(0)}" x2="${xi(1)}" y2="${yi(1)}" stroke="#2c3932" stroke-dasharray="4 4"/>
+      ${bars}
+      <text x="${P}" y="14" fill="#4a9ed5" font-size="11">● model predicted</text>
+      <text x="${P+140}" y="14" fill="#2fc584" font-size="11">● actual hit-rate (green = calibrated ±5pts)</text>
+    </svg>`;
+  }
+  const sh = d.slips || [];
+  $("#slipHist").innerHTML = sh.length
+    ? sh.map(s => `<div class="pill" style="margin:2px">${esc(s.day)} ${esc(s.label)}: odds ${s.total_odds}
+      <b style="color:${s.result==="win"?"var(--green2)":(s.result==="loss"?"var(--accent,#e5554f)":"#888")}">${esc(s.result)}</b></div>`).join("")
+    : '<span class="empty">No settled slips yet.</span>';
+}
+
+/* ═══════════════ slips (Phase 5) ═══════════════ */
+async function loadSlips(){
+  const box = $("#slipsBox"); box.innerHTML = '<span class="empty">Loading…</span>';
+  const d = await api(`/api/slips?day=${CFG.day || todayISO()}`);
+  if (!d.ok) { box.innerHTML = `<span class="empty">${esc(d.error || "error")}</span>`; return; }
+  if (!d.slips || !d.slips.length){
+    box.innerHTML = `<span class="empty">No slips for ${esc(CFG.day)} — run the engine first
+      (today = ${todayISO()}).${d.note ? " " + esc(d.note) : ""}</span>`; return; }
+  box.innerHTML = "";
+  for (const s of d.slips){
+    const legs = (s.legs_list || []);
+    const el = document.createElement("div");
+    el.className = "card";
+    el.innerHTML = `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <span class="pill accent" style="color:var(--green2);border-color:var(--green)">🎫 ${esc(s.label)}</span>
+        <span class="pill">${s.legs} leg${s.legs>1?"s":""}</span>
+        <span class="pill">odds ${Number(s.total_odds).toFixed(2)}</span>
+        <span class="pill">joint ${(Number(s.joint_prob)*100).toFixed(1)}%</span>
+        <span class="pill">risk ${(100 - Number(s.joint_prob)*100).toFixed(1)}%</span>
+        ${s.ev != null ? `<span class="pill ${s.ev>=0?"":"of"}" >EV ${(s.ev>=0?"+":"")}${Number(s.ev).toFixed(3)}</span>` : ""}
+      </div>
+      <div style="margin-top:10px;display:flex;flex-direction:column;gap:6px">
+        ${legs.map((l,i)=>`<div style="display:flex;gap:8px;align-items:baseline;font-size:13px">
+          <span style="color:var(--muted)">${i+1}.</span>
+          <span><b>${esc(l.home)} vs ${esc(l.away)}</b>
+          <span class="pill ${MKTCLS[l.market]||""}" style="font-size:11px">${esc(l.market)}</span>
+          <b style="color:var(--green2)">${esc(l.tip)}</b> @${Number(l.odds).toFixed(2)}
+          ${l.p_cal?`<span style="color:var(--muted)">· ${(Number(l.p_cal)*100).toFixed(0)}%</span>`:""}</span>
+          </div>`).join("")}
+      </div>`;
+    box.appendChild(el);
+  }
+}
+
+/* ═══════════════ slip settings (Phase 5) ═══════════════ */
+async function loadSlipSettings(){
+  const r = await api("/api/settings");
+  if (!r.ok) return;
+  const s = r.settings || {};
+  const put = (id, v) => { if (v != null || $("#"+id).type !== "checkbox") $(`#${id}`) &&
+    ($("#"+id).type === "checkbox" ? $("#"+id).checked = !!v : $("#"+id).value = v ?? ""); };
+  put("s_legmin", s.LEG_ODDS_MIN); put("s_legmax", s.LEG_ODDS_MAX);
+  put("s_slipmin", s.SLIP_ODDS_MIN); put("s_slipmax", s.SLIP_ODDS_MAX);
+  put("s_maxlegs", s.MAX_LEGS); put("s_forcelegs", s.FORCE_LEGS);
+  put("s_minprob", s.MIN_LEG_PROB); put("s_blockfr", s.BLOCK_FRIENDLY);
+}
+loadSlipSettings();
+const btnSS = $("#btn_set_save");
+if (btnSS) btnSS.onclick = async ()=>{
+  const num = id => { const v = $(`#${id}`).value; return v === "" ? null : parseFloat(v); };
+  const body = {LEG_ODDS_MIN: num("s_legmin"), LEG_ODDS_MAX: num("s_legmax"),
+                SLIP_ODDS_MIN: num("s_slipmin"), SLIP_ODDS_MAX: num("s_slipmax"),
+                MAX_LEGS: num("s_maxlegs"), FORCE_LEGS: num("s_forcelegs"),
+                MIN_LEG_PROB: num("s_minprob"), BLOCK_FRIENDLY: $("#s_blockfr").checked};
+  const r = await api("/api/settings", {method:"POST",
+    headers:{"Content-Type":"application/json"}, body: JSON.stringify(body)});
+  toast(r.ok ? "Slip settings saved ✓" : "Failed to save");
+};
+
+/* ═══════════════ demo / live ═══════════════ */
+let DEMO = false;   // live by default — everything from Supabase
+function syncDemoUI(){
+  $("#demo_state").textContent = DEMO ? "DEMO · fixtures" : "LIVE · Supabase";
+  $("#btn_demo").classList.toggle("live", !DEMO);
+  $("#pick_mode").textContent = DEMO ? "DEMO" : "LIVE";
+  $("#res_mode").textContent  = DEMO ? "DEMO" : "LIVE";
+  $("#btn_finals").style.display = DEMO ? "" : "none";
+}
+$("#btn_demo").onclick = ()=>{
+  DEMO = !DEMO; syncDemoUI();
+  loadDay(); if ($("#tab_results").classList.contains("active")) loadResults();
+  log(DEMO ? "Demo mode — sample fixtures." : "Live mode — reading Supabase.");
+};
+syncDemoUI();
+
+/* ═══════════════ picks ═══════════════ */
+let LAST = null;
+async function loadDay(){
+  const d = await api(`/api/day?demo=${DEMO ? 1 : 0}&day=${encodeURIComponent(CFG.day || todayISO())}`);
+  renderPicks(d);
+  $("#pick_sub").textContent = d.ok ? `${d.day} · ${d.count} picks · conf ≥ ${d.min ?? CFG.minp}%` : "";
+}
+function MKT(m){ return `<span class="chip ${MKTCLS[m]||""}">${esc(m)}</span>`; }
+function renderPicks(dayObj){
+  const host = $("#picks_host");
+  if (!dayObj || !dayObj.ok){ host.innerHTML = `<div class="empty">${esc(dayObj?.error || "Failed to load.")}</div>`; return; }
+  LAST = dayObj;
+  if (!dayObj.picks?.length){
+    host.innerHTML = `<div class="empty">No picks stored for this day yet.</div>`; return;
+  }
+  const bySport = {};
+  for (const p of dayObj.picks) (bySport[p.sport] = bySport[p.sport] || []).push(p);
+  const order = ["football","basketball","tennis"];
+  let html = "";
+  for (const sp of order){
+    const arr = bySport[sp]; if (!arr) continue;
+    html += `<div class="grpH"><b>${ICON[sp]} ${sp.toUpperCase()}</b><span>${arr.length} picks</span></div>`;
+    for (const p of arr){
+      const why = (p.why || []).map(w => `<div class="r"><span>✓</span><span>${esc(w)}</span></div>`).join("");
+      const bkOdd = (p.why || []).map(w => { const m = w.match(/(betway|betPawa) TZ ✓ @([\d.]+)/); return m ? [m[1], m[2]] : null; }).find(Boolean);
+      html += `<div class="pk">
+        <div class="rank">#${p.rank}</div>
+        <div class="pkWho">
+          <b>${ICON[p.sport]} ${esc(p.match)}</b>
+          <div class="meta">
+            <span>${esc(p.league||"")}</span>
+            <span class="pill">${esc(p.time||"")}</span>
+            ${p.pred_score ? `<span class="pill">PS ${esc(p.pred_score)}</span>` : ""}
+            ${bkOdd ? `<span class="pill accent" style="color:var(--green2);border-color:var(--green)">${bkOdd[0]} ${bkOdd[1]}</span>`
+                    : p.odds != null ? `<span class="pill">odds ${esc(p.odds)}</span>` : ""}
+          </div>
+          ${why ? `<div class="pkWhy">${why}</div>` : ""}
+        </div>
+        <div class="pkBet">${MKT(p.market)}
+          <div class="tip">${esc(p.tip)}</div>
+          <div class="fb">FB ${p.forebet}%</div></div>
+        <div class="confBox"><div class="confNum">${p.conf}%</div>
+          <div class="confBar"><i style="width:${p.conf}%"></i></div></div>
+      </div>`;
+    }
+  }
+  host.innerHTML = html;
+}
+
+/* ═══════════════ run engine (spinner) ═══════════════ */
+async function pollJob(jid, title){
+  const t0 = Date.now(), head = $("#log").textContent;
+  let miss = 0;
+  while (true){                          // hakuna kikomo: tunasubiri hadi server iseme imeisha
+    const j = await api(`/api/job?id=${jid}`);
+    const sec = Math.round((Date.now() - t0) / 1000);
+    const mmss = `${String(Math.floor(sec/60)).padStart(2,"0")}:${String(sec%60).padStart(2,"0")}`;
+    if (j.ok === false && j.error){ if (++miss > 40) return {done:true, rc:-1, log:j.error}; }   // ~1 dk server haijibu
+    else miss = 0;
+    const body = (j.log || "").trim();
+    const el = $("#log");
+    el.textContent = head + (body || `⏳ worker inaanza... (${mmss})`) + "\n";
+    el.scrollTop = el.scrollHeight;
+    const live = document.getElementById("ldLive"), tm = document.getElementById("ldTime");
+    if (tm) tm.textContent = `${title || "Inaendesha"} · ${mmss}`;
+    if (live) live.textContent = body ? body.split("\n").slice(-6).join("\n") : "⏳ inasubiri output ya kwanza...";
+    if (j.done) return j;
+    await new Promise(r=>setTimeout(r, 1500));
+  }
+}
+const PHASES = ["Fetching today's fixtures…", "Reading Forebet probabilities…",
+                "Applying 10 verification rules…", "Selecting the best markets…",
+                "Computing confidence…", "Saving to Supabase…"];
+let phaseTimer = null;
+function showLoading(){
+  $("#picks_host").innerHTML = `<div class="loadWrap">
+    <div class="spinner"></div>
+    <div class="loadTxt" id="ldTxt">${PHASES[0]}</div>
+    <div class="loadSub" id="ldTime">Processing — please wait.</div>
+    <pre id="ldLive" style="text-align:left;max-width:860px;margin:14px auto 0;background:#070b09;border:1px solid var(--line);
+      border-radius:10px;padding:10px 12px;font-size:11.5px;color:var(--soft);white-space:pre-wrap;min-height:40px">⏳ inaanza...</pre></div>`;
+  let i = 0;
+  phaseTimer = setInterval(()=>{
+    i = (i+1) % PHASES.length;
+    const el = $("#ldTxt"); if (el) el.textContent = PHASES[i];
+  }, 2800);
+}
+function hideLoading(){ if (phaseTimer){ clearInterval(phaseTimer); phaseTimer = null; } }
+
+async function runPick(){
+  const btn = $("#btn_run"); btn.disabled = true; $("#log").textContent = "";
+  showLoading();
+  log(`▶ Engine imeanza: ${CFG.day} — ${new Date().toLocaleTimeString()}`);
+  const r = await api("/api/run", {method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({day: CFG.day || todayISO(),
+                            min_prob: parseInt(CFG.minp) || 80,
+                            enrich: !!CFG.enrich,
+                            use_demo: DEMO})});
+  if (!r.ok){
+    hideLoading(); log("⚠ " + (r.error || "?")); btn.disabled = false;
+    $("#picks_host").innerHTML = `<div class="empty">${esc(r.error || "Run failed")} — see Activity Log.</div>`;
+    return;
+  }
+  const jr = await pollJob(r.job, "Engine");
+  hideLoading();
+  if (!jr || jr.rc){ log("✗ Engine imeshindwa (rc=" + (jr ? jr.rc : "?") + ") — soma log juu.");
+    btn.disabled = false;
+    $("#picks_host").innerHTML = `<div class="empty" style="border-color:var(--red);color:var(--red)">✗ Engine imeshindwa — fungua <b>Activity Log</b>.</div>`;
+    return; }
+  log("✓ Done.");
+  if (DEMO){ DEMO = false; syncDemoUI(); }
+  btn.disabled = false;
+  await loadDay(); refreshStatus();
+}
+
+async function runScrape(){
+  const btn = $("#btn_scrape"); btn.disabled = true; $("#log").textContent = "";
+  showLoading();
+  log(`⬇ Scraper imeanza: ${CFG.day} + jana (matokeo) — ${new Date().toLocaleTimeString()}`);
+  const r = await api("/api/scrape", {method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({day: CFG.day || todayISO()})});
+  if (!r.ok){
+    hideLoading(); log("⚠ " + (r.error || "?")); btn.disabled = false;
+    $("#picks_host").innerHTML = `<div class="empty" style="border-color:var(--red);color:var(--red)">⚠ ${esc(r.error || "Scraper haikuanza")}</div>`;
+    return;
+  }
+  const j = await pollJob(r.job, "Scraper");
+  hideLoading(); btn.disabled = false;
+  if (!j || j.rc){
+    log("✗ Scrape IMESHINDWA (rc=" + (j ? j.rc : "timeout") + ") — angalia Activity Log.");
+    $("#picks_host").innerHTML = `<div class="empty" style="border-color:var(--red);color:var(--red)">
+      ✗ Scraper haikupata mechi — Forebet haikufikiwa.<br>
+      <span style="color:var(--mut)">Fungua <b>Activity Log</b> uone sababu na suluhisho. Usibonyeze Run Engine bado.</span></div>`;
+    refreshStatus(); return;
+  }
+  log("✓ Scrape imefanikiwa — sasa bonyeza 2) Run Engine.");
+  await loadDay(); refreshStatus(); loadResults();
+}
+$("#btn_scrape").onclick = runScrape;
+
+/* ═══════════════ results ═══════════════ */
+$("#res_day").value = ydayISO();
+$("#res_day").addEventListener("change", loadResults);
+function settleDay(){ return $("#res_day").value || ydayISO(); }
+
+async function loadResults(){
+  const rd = settleDay();
+  const data = await api(`/api/results?demo=${DEMO ? 1 : 0}&day=${rd}`);
+  const o = data.overall || {};
+  $("#overall").innerHTML = `
+    <div class="ovl"><div class="n">${o.settled ?? 0}</div><div class="l">Settled</div></div>
+    <div class="ovl"><div class="n" style="color:var(--green2)">${o.wins ?? 0}</div><div class="l">Won</div></div>
+    <div class="ovl"><div class="n" style="color:var(--red)">${o.losses ?? 0}</div><div class="l">Lost</div></div>
+    ${o.push ? `<div class="ovl"><div class="n" style="color:var(--gold)">${o.push}</div><div class="l">Push</div></div>` : ""}
+    <div class="ovl"><div class="n">${o.hit != null ? o.hit + "%" : "—"}</div><div class="l">Hit rate · ${esc(rd)}</div></div>`;
+  $("#mktStats").innerHTML = Object.entries(o.per_market || {})
+      .map(([m,hp])=>`<span class="pill">${esc(m)}: <b>${hp}%</b></span>`).join("");
+  const host = $("#resultsHost");
+  if (!data.days || !data.days.length){
+    host.innerHTML = `<div class="empty">No settled picks for <b>${esc(rd)}</b> yet.
+      ${DEMO ? "Try yesterday in demo data." : "Run “Settle Yesterday” once the fixtures have finished."}</div>`;
+    return;
+  }
+  const SYM = {win:"✓", loss:"✗", push:"±", pending:"…", void:"∅", unknown:"?"};
+  host.innerHTML = data.days.map(d => `
+    <div class="dayblock">
+      <div class="dayhead"><b>📅 ${esc(d.day)}</b><span class="pill">${d.picks.length} tips</span></div>
+      ${d.picks.map(p => {
+        const cls = {win:"rwin", loss:"rloss", push:"rpush"}[p.result] || "";
+        return `
+        <div class="rrow ${cls}">
+          <span class="reschip ${p.result}">${SYM[p.result]||"?"} ${p.result.toUpperCase()}</span>
+          <div class="m">
+            <b>${ICON[p.sport]||"🏆"} ${esc(p.match)}</b>
+            <span>${esc(p.market)}: <b>${esc(p.tip)}</b> · Forebet ${p.forebet}% · ${esc(p.league)}</span>
+          </div>
+          ${p.final ? `<span class="pill">final <b>${esc(p.final)}</b></span>` : ""}
+          <span class="rconf">${p.conf}%</span>
+        </div>`;}).join("")}
+    </div>`).join("")
+    + (o.hit != null ? `
+      <div class="genpct ${o.hit >= 75 ? "good" : o.hit >= 50 ? "mid" : "bad"}">
+        <span class="gpL">Overall win rate · ${esc(rd)}</span>
+        <span class="gpS">${o.wins||0} won ✓ · ${o.losses||0} lost ✗${o.push ? ` · ${o.push} push` : ""}</span>
+        <span class="gpNum">${o.hit}%</span>
+      </div>` : "");
+}
+
+async function settleJob(){
+  const btn = $("#btn_settle"); btn.disabled = true;
+  log("↳ Settle in progress — re-reading Forebet…");
+  const r = await api("/api/settle", {method:"POST", headers:{"Content-Type":"application/json"}, body:"{}"});
+  if (r.ok) await pollJob(r.job); else log("⚠ " + (r.error||"?"));
+  btn.disabled = false; loadResults(); refreshStatus();
+}
+
+/* ═══════════════ analytics ═══════════════ */
+async function refreshStatus(){
+  const s = await api("/api/status");
+  setConn(!!s.ok, s.ok ? "Supabase connected" : "Supabase/Server haijibu");
+  const db = $("#daysBox"), sb = $("#statsBox");
+  if (!s.ok){ db.innerHTML = `<span class="empty">${esc(s.error||"?")}</span>`; sb.innerHTML=""; return; }
+  db.innerHTML = s.days.length
+      ? s.days.map(d=>`<div class="statRow"><span>📅 ${esc(d.day)}</span><span><b>${d.match_count}</b> fixtures · ${esc((d.scraped_at||"").slice(11,16))}</span></div>`).join("")
+      : `<span class="empty">No cached days yet.</span>`;
+  sb.innerHTML = s.stats.length
+      ? s.stats.map(t=>`<div class="statRow"><span>${esc(t.market)} <span style="color:var(--mut)">(${esc(t.sport)})</span></span>
+          <span>${t.wins}W/${t.losses}L · <b style="color:var(--soft)">${t.hit_pct ?? "—"}%</b></span></div>`).join("")
+      : `<span class="empty">No settled results yet.</span>`;
+}
+
+/* ═══════════════ testing tools ═══════════════ */
+$("#btn_seed").onclick = async ()=>{
+  const day = CFG.day || todayISO();
+  log(`Seeding sample fixtures for ${day}…`);
+  const r = await api("/api/seed_demo", {method:"POST", headers:{"Content-Type":"application/json"},
+                                          body: JSON.stringify({day})});
+  log(`✓ Seeded — ${r.matches} fixtures, ${r.picks} picks (marked “K96 TEST”).`);
+  DEMO = false; syncDemoUI();
+  loadDay(); refreshStatus();
+};
+$("#btn_finals").onclick = seedFinals;
+$("#btn_finals2").onclick = seedFinals;
+async function seedFinals(){
+  const day = settleDay();
+  log(`Fabricating finals + settling ${day}…`);
+  const r = await api("/api/seed_results", {method:"POST", headers:{"Content-Type":"application/json"},
+                                            body: JSON.stringify({day})});
+  log(`✓ settled=${r.settled} · W=${r.wins} · L=${r.losses}`);
+  loadResults(); refreshStatus();
+}
+$("#btn_cleanup").onclick = async ()=>{
+  const r = await api("/api/cleanup_demo", {method:"POST", headers:{"Content-Type":"application/json"}, body:"{}"});
+  log(`🧹 test data removed: picks=${r.picks_deleted} fixtures=${r.matches_deleted} days=${r.days_deleted}`);
+  await loadDay(); await loadResults(); refreshStatus();
+};
+
+/* ═══════════════ copy ═══════════════ */
+function copyAll(){
+  if (!LAST || !LAST.picks || !LAST.picks.length) return;
+  const L = [`📅 K96 PICKS — ${LAST.day}` + (LAST.min ? ` (conf ≥ ${LAST.min}%)` : ""), ""];
+  for (const s of ["football","basketball","tennis"]){
+    const arr = LAST.picks.filter(p=>p.sport===s);
+    if (!arr.length) continue;
+    L.push(`══ ${ICON[s]} ${SPTSW[s]} (${arr.length}) ══`);
+    for (const p of arr){
+      L.push(`#${p.rank} [${p.time}] ${p.match} — ${p.market}: ${p.tip} — ${p.conf}% (FB ${p.forebet}%)`
+             + (p.pred_score ? ` · PS ${p.pred_score}` : ""));
+    }
+    L.push("");
+  }
+  L.push("Source: FOREBET · Engine: K96 Smart Engine. Bet responsibly.");
+  navigator.clipboard.writeText(L.join("\n"));
+  const t = $("#toast"); t.style.display = "block"; setTimeout(()=>t.style.display="none", 1800);
+}
+
+/* ═══════════════ boot ═══════════════ */
+$("#btn_run").onclick    = runPick;
+$("#btn_settle").onclick = settleJob;
+$("#btn_copy").onclick   = copyAll;
+function log(m){ $("#log").textContent += (m + "\n"); }
+loadDay();
+refreshStatus();
+
+/* ═══════════════ hamburger ═══════════════ */
+const MOBILE = () => window.matchMedia("(max-width:840px)").matches;
+if (localStorage.getItem("k96_collapsed") === "1") document.body.classList.add("collapsed");
+$("#hamb").onclick = () => {
+  if (MOBILE()) document.body.classList.toggle("navOpen");
+  else {
+    document.body.classList.toggle("collapsed");
+    localStorage.setItem("k96_collapsed", document.body.classList.contains("collapsed") ? "1" : "0");
+  }
+};
+$("#navBackdrop").onclick = () => document.body.classList.remove("navOpen");
+document.addEventListener("keydown", e => { if (e.key === "Escape") document.body.classList.remove("navOpen"); });
+document.querySelectorAll(".navItem").forEach(el => el.addEventListener("click", () => {
+  document.body.classList.remove("navOpen");
+  const t = el.querySelectorAll("span")[1]; if (t) $("#mbarTab").textContent = t.textContent;
+}));
+
+/* ═══════════════ tarehe (EAT, sync) ═══════════════ */
+setDay(todayISO(), false);
+$("#pick_day").addEventListener("change", ()=>{ setDay($("#pick_day").value, true); loadDay(); });
+$("#btn_today").onclick = ()=>{ setDay(todayISO(), false); loadDay(); };
+setInterval(()=>{                       // siku ikibadilika (saa 6 usiku EAT) → sasisha yenyewe
+  if (!DAY_PINNED && CFG.day !== todayISO()){ setDay(todayISO(), false); $("#res_day").value = ydayISO(); loadDay(); loadResults(); }
+}, 60000);
+
+/* ═══════════════ kazi inayoendelea (baada ya refresh) ═══════════════ */
+(async ()=>{
+  const r = await api("/api/running");
+  if (!r.ok || !r.job) return;
+  const btn = $(r.mode === "scrape" ? "#btn_scrape" : "#btn_run"); if (btn) btn.disabled = true;
+  showLoading(); log(`↻ Kazi ya ${r.mode} bado inaendelea — naonyesha maendeleo yake...`);
+  const j = await pollJob(r.job, r.mode === "scrape" ? "Scraper" : "Engine");
+  hideLoading(); if (btn) btn.disabled = false;
+  log(j && !j.rc ? "✓ Imekamilika." : "✗ Imeisha na hitilafu — soma log juu.");
+  loadDay(); refreshStatus(); loadResults();
+})();
+</script>
+</body>
+</html>

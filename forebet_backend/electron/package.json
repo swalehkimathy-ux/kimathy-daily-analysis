@@ -1,0 +1,70 @@
+{
+  "name": "k96-picks",
+  "version": "2.8.3",
+  "description": "K96 PICKS — Smart Pick Engine desktop",
+  "main": "main.js",
+  "author": "Kimathy96",
+  "license": "UNLICENSED",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win --x64"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "com.k96.picks",
+    "productName": "K96 PICKS",
+    "directories": {
+      "output": "../dist_electron"
+    },
+    "files": [
+      "main.js",
+      "logo_k96.ico"
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "logo_k96.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "shortcutName": "K96 PICKS"
+    },
+    "extraResources": [
+      {
+        "from": "..",
+        "to": "backend",
+        "filter": [
+          "*.py",
+          "index.html",
+          "logo_k96.png",
+          "logo_k96.ico",
+          "requirements.txt",
+          "schema.sql",
+          "schema_v2.sql",
+          ".env.local",
+          ".env.example",
+          "k96_settings.json",
+          "*.md",
+          "*.bat",
+          "!K96_BUILD.bat"
+        ]
+      },
+      {
+        "from": "../../forebet_picks_app",
+        "to": "forebet_picks_app",
+        "filter": [
+          "**/*.py",
+          "data/**/*.json",
+          "!**/__pycache__/**",
+          "!_tests/**"
+        ]
+      }
+    ]
+  }
+}

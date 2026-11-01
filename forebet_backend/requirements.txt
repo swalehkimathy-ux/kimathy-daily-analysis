@@ -1,0 +1,5 @@
+# K96 PICKS — dependencies za Python (Windows)
+curl_cffi        # Forebet requests (Chrome impersonation)
+beautifulsoup4   # DOM parsing ya basketball/tennis + enrich
+openpyxl         # Excel output
+playwright       # fallback browser Cloudflare (hiari; install: playwright install chromium)

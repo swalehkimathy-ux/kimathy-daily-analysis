@@ -1,0 +1,194 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" font-family="Segoe UI, Inter, Arial, sans-serif">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0a0e0c"/><stop offset="1" stop-color="#0d1411"/>
+    </linearGradient>
+    <linearGradient id="gr" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2fc584"/><stop offset="1" stop-color="#1a9d63"/>
+    </linearGradient>
+    <linearGradient id="bx" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#151c18"/><stop offset="1" stop-color="#111614"/>
+    </linearGradient>
+    <filter id="sh" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="5" stdDeviation="8" flood-color="#000" flood-opacity="0.45"/>
+    </filter>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#4ade9a"/>
+    </marker>
+    <marker id="arw" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#d9b34a"/>
+    </marker>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#ef4444"/>
+    </marker>
+  </defs>
+
+  <rect width="1600" height="1000" fill="url(#bg)"/>
+
+  <!-- ── TITLE ─────────────────────────────────────── -->
+  <text x="800" y="58" text-anchor="middle" font-size="38" font-weight="800" fill="#e9f0ea" letter-spacing="1">K96 PICKS — Data Flow ya Kivutio</text>
+  <text x="800" y="88" text-anchor="middle" font-size="15" fill="#7e9184">Forebet (prediction) → Engine 10-rules → Betway/betPawa verification → Supabase → GUI → Results engine-inajifunza</text>
+  <line x1="80" y1="112" x2="1520" y2="112" stroke="#233028" stroke-width="1.5"/>
+
+  <!-- ══ ZONE A: PC YA MTUMIAJI (kulia ya juu) ═════════════════ -->
+  <rect x="60" y="140" width="700" height="430" rx="18" fill="none" stroke="#233028" stroke-dasharray="7 5"/>
+  <text x="410" y="174" text-anchor="middle" font-size="14" font-weight="700" fill="#4ade9a" letter-spacing="2">① PC YAKO (worker · kila siku)</text>
+
+  <g filter="url(#sh)">
+    <rect x="90" y="195" width="180" height="78" rx="12" fill="url(#bx)" stroke="#2c3b32"/>
+    <text x="180" y="228" text-anchor="middle" font-size="22">🌐</text>
+    <text x="180" y="252" text-anchor="middle" font-size="14" font-weight="700" fill="#e9f0ea">FOREBET</text>
+    <text x="180" y="267" text-anchor="middle" font-size="11" fill="#7e9184">probabilities + trends + odds</text>
+  </g>
+
+  <g filter="url(#sh)">
+    <rect x="300" y="195" width="200" height="78" rx="12" fill="url(#bx)" stroke="#2c3b32"/>
+    <text x="400" y="226" text-anchor="middle" font-size="22">⚙️</text>
+    <text x="400" y="250" text-anchor="middle" font-size="14" font-weight="700" fill="#e9f0ea">WORKER</text>
+    <text x="400" y="265" text-anchor="middle" font-size="11" fill="#7e9184">00:00 scrape · cache-aware · 1x/siku</text>
+  </g>
+
+  <g filter="url(#sh)">
+    <rect x="530" y="195" width="200" height="78" rx="12" fill="url(#bx)" stroke="#2c3b32"/>
+    <text x="630" y="226" text-anchor="middle" font-size="22">🧠</text>
+    <text x="630" y="250" text-anchor="middle" font-size="14" font-weight="700" fill="#e9f0ea">SMART ENGINE</text>
+    <text x="630" y="265" text-anchor="middle" font-size="11" fill="#7e9184">10 rules · 7 markets · 3–10 picks ✓</text>
+  </g>
+
+  <!-- arrows A -->
+  <line x1="270" y1="234" x2="293" y2="234" stroke="#4ade9a" stroke-width="2.5" marker-end="url(#ar)"/>
+  <line x1="500" y1="234" x2="523" y2="234" stroke="#4ade9a" stroke-width="2.5" marker-end="url(#ar)"/>
+
+  <g filter="url(#sh)">
+    <rect x="90" y="305" width="640" height="120" rx="14" fill="#101613" stroke="#d9b34a" stroke-width="1.5"/>
+    <text x="410" y="333" text-anchor="middle" font-size="15" font-weight="800" fill="#d9b34a">② BOOKMAKER VERIFICATION (criteria mpya ya lazima)</text>
+    <text x="410" y="358" text-anchor="middle" font-size="12.5" fill="#c2d2c7">Tip halisi lazima i-EXIST kwenye site na odds. Ikikosekana → ❌ haitumiki (ondolewa)</text>
+    <g>
+      <rect x="120" y="375" width="200" height="38" rx="9" fill="#122619" stroke="#2fc584"/>
+      <text x="220" y="399" text-anchor="middle" font-size="13" font-weight="700" fill="#4ade9a">1ᵉʳ BETWAY TZ</text>
+      <rect x="360" y="375" width="200" height="38" rx="9" fill="#1c1410" stroke="#d9b34a"/>
+      <text x="460" y="399" text-anchor="middle" font-size="13" font-weight="700" fill="#d9b34a">2ⁿᵈ betPawa (backup)</text>
+      <line x1="320" y1="394" x2="355" y2="394" stroke="#d9b34a" stroke-width="2" stroke-dasharray="4 3" marker-end="url(#arw)"/>
+      <rect x="580" y="375" width="130" height="38" rx="9" fill="#24120f" stroke="#6b2f26"/>
+      <text x="645" y="399" text-anchor="middle" font-size="12" fill="#ef4444">API down → ruhusa</text>
+    </g>
+  </g>
+
+  <!-- picks → Supabase arrow -->
+  <line x1="530" y1="273" x2="530" y2="298" stroke="#4ade9a" stroke-width="2.5" marker-end="url(#ar)"/>
+  <line x1="410" y1="425" x2="410" y2="455" stroke="#4ade9a" stroke-width="2.5" marker-end="url(#ar)"/>
+
+  <g filter="url(#sh)">
+    <rect x="90" y="460" width="640" height="96" rx="14" fill="url(#gr)"/>
+    <text x="410" y="495" text-anchor="middle" font-size="20" font-weight="800" fill="#02100a">✅ BETTABLE PICKS 3–10 (hazingu tu)</text>
+    <text x="410" y="520" text-anchor="middle" font-size="13" fill="#03211a">kila pick ina: odds za betway/betPawa ✓ · FB% ✓ · orodha ya “kwa nini?” ✓</text>
+    <text x="410" y="540" text-anchor="middle" font-size="12" fill="#0a3527">diversity caps: DC≤3 · TG≤3 · 1X2≤3 · Winner≤3 · DNB/BTTS/EH ≤2</text>
+  </g>
+
+  <!-- ══ ZONE B: SUPABASE CLOUD ════════════════════ -->
+  <rect x="830" y="140" width="700" height="430" rx="18" fill="none" stroke="#233028" stroke-dasharray="7 5"/>
+  <text x="1180" y="174" text-anchor="middle" font-size="14" font-weight="700" fill="#4ade9a" letter-spacing="2">③ SUPABASE CLOUD (Postgres + RLS)</text>
+
+  <g filter="url(#sh)">
+    <rect x="860" y="195" width="300" height="72" rx="12" fill="url(#bx)" stroke="#2c3b32"/>
+    <text x="890" y="222" font-size="14" font-weight="700" fill="#4ade9a">🗓 day_cache</text>
+    <text x="890" y="244" font-size="11.5" fill="#7e9184">1 row / siku · scraped_at · no re-scrape</text>
+  </g>
+  <g filter="url(#sh)">
+    <rect x="860" y="280" width="300" height="72" rx="12" fill="url(#bx)" stroke="#2c3b32"/>
+    <text x="890" y="307" font-size="14" font-weight="700" fill="#4ade9a">⚽ matches</text>
+    <text x="890" y="329" font-size="11.5" fill="#7e9184">probs · trend · PS · h2h · final scores</text>
+  </g>
+  <g filter="url(#sh)">
+    <rect x="860" y="365" width="300" height="72" rx="12" fill="url(#bx)" stroke="#2c3b32"/>
+    <text x="890" y="392" font-size="14" font-weight="700" fill="#4ade9a">📌 picks</text>
+    <text x="890" y="414" font-size="11.5" fill="#7e9184">market · tip · conf% · why[] · result</text>
+  </g>
+  <g filter="url(#sh)">
+    <rect x="860" y="450" width="300" height="72" rx="12" fill="url(#bx)" stroke="#d9b34a"/>
+    <text x="890" y="477" font-size="14" font-weight="700" fill="#d9b34a">📊 engine_stats (view)</text>
+    <text x="890" y="499" font-size="11.5" fill="#7e9184">hit-% per market+sport — learning data</text>
+  </g>
+
+  <g filter="url(#sh)">
+    <rect x="1200" y="230" width="300" height="150" rx="14" fill="url(#bx)" stroke="#2c3b32"/>
+    <text x="1350" y="260" text-anchor="middle" font-size="14" font-weight="800" fill="#e9f0ea">🔐 RLS USALAMA</text>
+    <text x="1350" y="288" text-anchor="middle" font-size="12" fill="#c2d2c7">anon key  → kusoma TU</text>
+    <text x="1350" y="310" text-anchor="middle" font-size="12" fill="#c2d2c7">service   → kuandika (PC yako pekee)</text>
+    <text x="1350" y="340" text-anchor="middle" font-size="11" fill="#7e9184">401 kwa uandishi wa nje</text>
+  </g>
+
+  <!-- arrows between zones -->
+  <line x1="730" y1="508" x2="856" y2="460" stroke="#4ade9a" stroke-width="2.5" marker-end="url(#ar)"/>
+  <line x1="730" y1="469" x2="856" y2="330" stroke="#4ade9a" stroke-width="2.5" stroke-dasharray="6 4" marker-end="url(#ar)"/>
+
+  <!-- ══ ZONE C: GUI ══════════════════════════════════ -->
+  <rect x="60" y="600" width="700" height="330" rx="18" fill="none" stroke="#233028" stroke-dasharray="7 5"/>
+  <text x="410" y="634" text-anchor="middle" font-size="14" font-weight="700" fill="#4ade9a" letter-spacing="2">④ GUI (browser · desktop app)</text>
+
+  <g filter="url(#sh)">
+    <rect x="90" y="655" width="155" height="60" rx="10" fill="url(#bx)" stroke="#2c3b32"/>
+    <text x="167" y="681" text-anchor="middle" font-size="13" font-weight="700" fill="#e9f0ea">🎯 Picks</text>
+    <text x="167" y="700" text-anchor="middle" font-size="10.5" fill="#7e9184">spinner → cards</text>
+  </g>
+  <g filter="url(#sh)">
+    <rect x="255" y="655" width="155" height="60" rx="10" fill="url(#bx)" stroke="#2c3b32"/>
+    <text x="332" y="681" text-anchor="middle" font-size="13" font-weight="700" fill="#e9f0ea">🏁 Results</text>
+    <text x="332" y="700" text-anchor="middle" font-size="10.5" fill="#7e9184">✓ green / ✗ red / %</text>
+  </g>
+  <g filter="url(#sh)">
+    <rect x="420" y="655" width="150" height="60" rx="10" fill="url(#bx)" stroke="#2c3b32"/>
+    <text x="495" y="681" text-anchor="middle" font-size="13" font-weight="700" fill="#e9f0ea">📊 Analytics</text>
+    <text x="495" y="700" text-anchor="middle" font-size="10.5" fill="#7e9184">hit-rate per market</text>
+  </g>
+  <g filter="url(#sh)">
+    <rect x="580" y="655" width="150" height="60" rx="10" fill="url(#bx)" stroke="#2c3b32"/>
+    <text x="655" y="681" text-anchor="middle" font-size="13" font-weight="700" fill="#e9f0ea">⚙ Settings</text>
+    <text x="655" y="700" text-anchor="middle" font-size="10.5" fill="#7e9184">date · min% · H2H</text>
+  </g>
+
+  <rect x="90" y="730" width="640" height="56" rx="10" fill="#101613" stroke="#2c3b32"/>
+  <text x="410" y="752" text-anchor="middle" font-size="13" font-weight="700" fill="#c2d2c7">GUI inasoma SUPABASE tu — Forebet haigusa tena (0 scraping ya user)</text>
+  <text x="410" y="772" text-anchor="middle" font-size="11" fill="#7e9184">✅ Spinner iliyoizwa → picks za siku (cache ya leo) · LIVE Supabase</text>
+
+  <!-- G: arrows in -->
+  <line x1="1200" y1="570" x2="1200" y2="632" stroke="#4ade9a" stroke-width="2.5" marker-end="url(#ar)"/>
+  <line x1="730" y1="688" x2="876" y2="688" stroke="#4ade9a" stroke-width="2.5" marker-end="url(#ar)"/>
+
+  <!-- ══ ZONE D: SETTLE LOOP (01:00) ═══════════════ -->
+  <rect x="830" y="600" width="700" height="330" rx="18" fill="none" stroke="#233028" stroke-dasharray="7 5"/>
+  <text x="1180" y="634" text-anchor="middle" font-size="14" font-weight="700" fill="#d9b34a" letter-spacing="2">⑤ MATOKEO + LEARNING LOOP (01:00 auto)</text>
+
+  <g filter="url(#sh)">
+    <rect x="860" y="655" width="190" height="80" rx="12" fill="url(#bx)" stroke="#d9b34a"/>
+    <text x="955" y="685" text-anchor="middle" font-size="13" font-weight="700" fill="#d9b34a">⏰ 01:00 EAT</text>
+    <text x="955" y="707" text-anchor="middle" font-size="11" fill="#7e9184">settle ya jana + catch-up</text>
+  </g>
+  <g filter="url(#sh)">
+    <rect x="1070" y="655" width="190" height="80" rx="12" fill="url(#bx)" stroke="#2c3b32"/>
+    <text x="1165" y="685" text-anchor="middle" font-size="13" font-weight="700" fill="#e9f0ea">Forebet finals</text>
+    <text x="1165" y="703" text-anchor="middle" font-size="11" fill="#7e9184">kurasa za jana → scores</text>
+    <text x="1165" y="720" text-anchor="middle" font-size="11" fill="#7e9184">7 markets zimehesabiwa</text>
+  </g>
+  <g filter="url(#sh)">
+    <rect x="1280" y="655" width="190" height="80" rx="12" fill="url(#bx)" stroke="#2c3b32"/>
+    <text x="1375" y="685" text-anchor="middle" font-size="13" font-weight="700" fill="#e9f0ea">picks.result</text>
+    <text x="1375" y="705" text-anchor="middle" font-size="11" fill="#4ade9a">win ✓ · loss ✗</text>
+    <text x="1375" y="720" text-anchor="middle" font-size="11" fill="#7e9184">push ↔ · pending ⏳</text>
+  </g>
+  <line x1="1050" y1="695" x2="1063" y2="695" stroke="#4ade9a" stroke-width="2.5" marker-end="url(#ar)"/>
+  <line x1="1260" y1="695" x2="1273" y2="695" stroke="#4ade9a" stroke-width="2.5" marker-end="url(#ar)"/>
+
+  <!-- learning loop -->
+  <path d="M1375 735 C1375 800 1180 850 1060 840" fill="none" stroke="#d9b34a" stroke-width="2.5" stroke-dasharray="6 4" marker-end="url(#arw)"/>
+  <g filter="url(#sh)">
+    <rect x="900" y="795" width="320" height="96" rx="14" fill="#101613" stroke="#d9b34a"/>
+    <text x="1060" y="825" text-anchor="middle" font-size="14" font-weight="800" fill="#d9b34a">🔄 ENGINE INAJIFUNZA</text>
+    <text x="1060" y="849" text-anchor="middle" font-size="12" fill="#c2d2c7">hit-rate per soko ina-badilisha rules baadaye</text>
+    <text x="1060" y="870" text-anchor="middle" font-size="11" fill="#7e9184">(calibration halisi = Phase 6 backtest)</text>
+  </g>
+
+  <!-- ── footer ── -->
+  <line x1="80" y1="950" x2="1520" y2="950" stroke="#233028" stroke-width="1.5"/>
+  <text x="800" y="975" text-anchor="middle" font-size="12" fill="#5d6d62">K96 PICKS v1.7 · By Kimathy96 · Data: Forebet pekee · Bettings: Betway TZ (primary) + betPawa (backup) · PostgreSQL: Supabase · GUI: desktop/mobile web</text>
+</svg>

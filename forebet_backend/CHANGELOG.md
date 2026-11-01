@@ -6,7 +6,7 @@
 - Missing exact bookmaker lines no longer erase model candidates. Provider-priced markets are preferred when available; worker still verifies market and odds before slips.
 - Removed the artificial 1.15 inferred-odds floor for model-only picks; never treat inverse model probability as a real price. Confidence display is capped at 95%.
 - Adaptive threshold logging now reports the last threshold actually tried even if the day still has fewer than three picks.
-- Default slip odds target changed to 1.50–1.80. Basketball projected scores above 15 are no longer rejected by football's score bound.
+- Default slip odds target changed to 1.50–1.80, per-leg minimum odds to 1.01, and Total Goals/Team Goals diversity caps to 10 each. Basketball projected scores above 15 are no longer rejected by football's score bound.
 - Offline suites passed: engine, validation, bookie guard, picks, matching, odds, slips, settlement, worker flow.
 
 ## Phase 8.H — v2.8.4 (2026-11-01) ✅ UHAKIKI WA SUPABASE + RUN HISTORY SALAMA

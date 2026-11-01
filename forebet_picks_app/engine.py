@@ -21,7 +21,7 @@ from pathlib import Path
 MIN_CONF = 80                 # mwisho wa chini wa confidence (adaptive-relaxation hapa chini)
 TARGET_MIN, TARGET_MAX = 3, 10
 RELAX_STEPS = [80, 75, 70]
-CAPS = {"1X2": 3, "Double Chance": 3, "Total Goals": 3, "Team Goals": 4, "Winner": 3,
+CAPS = {"1X2": 3, "Double Chance": 3, "Total Goals": 10, "Team Goals": 10, "Winner": 3,
         "Draw No Bet": 2, "BTTS": 2, "Handicap +2": 2,
         "Handicap": 3, "Total Points": 3, "Games Handicap": 3, "Total Games": 3}   # diversity caps per day
 GATE_PROB = 50                # winner/DC/DNB/EH inahitaji favorite ≥ 50%; totals hazihitaji
@@ -805,7 +805,7 @@ def best_tip_for_match(rec, sport, bk=None, min_prob=0.75, log=print):
     bk_probs = bk.get("probs") or {}
     bk_odds = bk.get("odds") or {}
     w = float(_cg2("W_MODEL", W_MODEL_DEF))
-    lo_o = float(_cg2("LEG_ODDS_MIN", 1.05))
+    lo_o = float(_cg2("LEG_ODDS_MIN", 1.01))
     hi_o = float(_cg2("LEG_ODDS_MAX", 3.50))
 
     # RULES B4/T7 + tennis T5 lopsided veto: favourite ≥85% → angua Over games zote

@@ -6,7 +6,7 @@ from pathlib import Path
 
 DEFAULTS = {
     # slip target & legs (Phase 5)
-    "LEG_ODDS_MIN": 1.05,        # lengo la juhudi chepesi sana ni bure
+    "LEG_ODDS_MIN": 1.01,        # low-odds markets allowed; real odds still required for slips
     "LEG_ODDS_MAX": 3.50,
     "SLIP_ODDS_MIN": 1.50,
     "SLIP_ODDS_MAX": 1.80,

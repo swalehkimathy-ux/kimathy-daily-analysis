@@ -50,7 +50,7 @@ assert bt3 is not None and bt3["bk_odds"] is None and bt3["p_market"] is None, b
 bk_bad = {"found": True, "bookmaker": "betway",
           "probs": {("Double Chance", "1X"): 0.99}, "odds": {("Double Chance", "1X"): 1.01}}
 btb = engine.best_tip_for_match(bay, "football", bk_bad, 0.75, lambda s: None)
-assert btb is None or (btb["bk_odds"] is None), btb
+assert btb is not None and btb["bk_odds"] == 1.01, btb  # low-priced safe markets are allowed
 # rejected-with-reason zipo (G7 — top 3)
 btj = engine.best_tip_for_match(bay, "football", None, 0.75, lambda s: None)
 assert isinstance(btj.get("rejected"), list)
@@ -120,5 +120,11 @@ assert bt_safe is not None and bt_safe["bk_odds"] is None, bt_safe
 ultra = mk([97, 2, 1], None, "Favorite FC", "Visitor", "EPL", avg=3.0)
 bt_ultra = engine.best_tip_for_match(ultra, "football", None, 0.90, lambda s: None)
 assert bt_ultra is not None and bt_ultra["p_cal"] >= 0.90, bt_ultra
+# The user-requested 10-match Over 0.5 style must not be stopped by the old
+# cap of three Total Goals selections.
+fixtures = [mk([33, 34, 33], None, f"Home{i}", f"Away{i}", f"League {i}",
+               ps=[2, 1], avg=3.0) for i in range(12)]
+front_many, pool_many, chosen_many = engine.predict_day({"football": fixtures}, None, 80, lambda s: None)
+assert len(front_many) == 10 and sum(p["market"] == "Total Goals" for p in front_many) == 10, front_many
 
 print("✓ engine v1.0 (rules + fallback/team goals): ALL GREEN (11 groups)")

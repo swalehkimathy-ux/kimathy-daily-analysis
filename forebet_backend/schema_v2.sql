@@ -57,15 +57,13 @@ create table if not exists public.slip_legs (
   result text default 'pending' check (result in ('pending','win','loss','push','void'))
 );
 
--- 5. RLS: kusoma kwa anon, kuandika service tu
+-- 5. RLS: hakuna anon read/write; worker service_role pekee
 alter table public.odds_snapshots enable row level security;
 alter table public.slips          enable row level security;
 alter table public.slip_legs      enable row level security;
 drop policy if exists anon_read_slips on public.slips;
-create policy anon_read_slips on public.slips for select using (true);
 drop policy if exists anon_read_slip_legs on public.slip_legs;
-create policy anon_read_slip_legs on public.slip_legs for select using (true);
--- odds_snapshots: private (worker tu) — hakuna anon policy
+-- Tables zote za betting/private data: hakuna anon policy; service_role worker pekee.
 
 -- 6. calibration view (Phase 6 mbele)
 create or replace view public.calibration as

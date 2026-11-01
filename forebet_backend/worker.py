@@ -251,50 +251,87 @@ def row_to_rec(row):
 # MODE: scrape — chota Forebet: siku husika + JANA (results) → Supabase
 # ──────────────────────────────────────────────────────────────────────────
 def _save_sport(day, sport, recs, log=print):
-    """Hifadhi mechi za sport moja Supabase PAPO HAPO (hakuna kusubiri sports zote)."""
+    """Hifadhi batches za sport moja; rudi idadi iliyotumwa (uhakiki unafanywa baada ya upsert)."""
     rows = [rec_to_row(day, sport, r) for r in recs]
     for chunk in (rows[i:i + 200] for i in range(0, len(rows), 200)):
         sb("POST", "matches?on_conflict=day,sport,home,away", chunk,
            prefer="resolution=merge-duplicates,return=minimal")
-    log(f"   [DB] {sport}: mechi {len(rows)} zimehifadhiwa Supabase ✓")
+    log(f"   [DB] {sport}: upsert imetumwa ({len(rows)} mechi)")
+    return len(rows)
 
 
-def _scrape_day(day, no_enrich=True, log=print):
-    """Chota sports zote za `day` HARAKA (bila H2H ya kila mechi) na uhifadhi kila sport papo hapo.
-    H2H inafanywa baadaye na Run Engine — kwa mechi zenye nafasi tu (si 1000+)."""
+def _scrape_day(day, no_enrich=True, log=print, return_report=False):
+    """Chota sports zote, upsert, kisha thibitisha mechi zilizotumwa zipo DB.
+    Cache metadata huwekwa mwisho; makosa yoyote huonekana kama partial/failed."""
     import scraper
     SPORTS = ["football", "basketball", "tennis"]
-    log(f"== [SCRAPE] kuchota Forebet: siku {day} (haraka — H2H itafanywa na Engine kwa wateule tu) ...")
-    # day_cache kwanza (matches zina FK kwenda day_cache)
+    started = _dt.datetime.now(_EAT).isoformat()
+    log(f"== [SCRAPE] kuchota Forebet: siku {day} (H2H itafanywa na Engine kwa wateule tu) ...")
+    # Usi-reset match_count ya zamani kabla ya scrape mpya kufanikiwa.
     sb("POST", "day_cache?on_conflict=day",
-       {"day": day, "match_count": 0, "engine_version": ENGINE_VERSION},
+       {"day": day, "engine_version": ENGINE_VERSION,
+        "scrape_status": "running", "scrape_started_at": started, "scrape_error": None},
        prefer="resolution=merge-duplicates,return=minimal")
-    records_by_sport, total = {}, 0
+
+    records_by_sport, errors = {}, []
+    expected = set()
     for sport in SPORTS:
         try:
             recs = scraper.collect(sport, day, False, log)
         except Exception as e:  # noqa: BLE001
-            log(f"   !! [{sport}] imeshindika: {e}")
+            errors.append(f"{sport}: Forebet fetch: {str(e)[:180]}")
+            log(f"   !! [{sport}] scrape imeshindwa: {str(e)[:180]}")
             recs = []
         records_by_sport[sport] = recs
-        log(f"   [{sport}] {len(recs)} mechi")
+        expected.update((sport, str(r.get("home") or ""), str(r.get("away") or "")) for r in recs)
+        log(f"   [{sport}] {len(recs)} mechi zimepatikana")
         if recs:
             try:
                 _save_sport(day, sport, recs, log)
-                total += len(recs)
-                sb("POST", "day_cache?on_conflict=day",
-                   {"day": day, "match_count": total, "engine_version": ENGINE_VERSION},
-                   prefer="resolution=merge-duplicates,return=minimal")
             except Exception as e:  # noqa: BLE001
-                log(f"   ✗✗ [DB] {sport}: kuhifadhi Supabase kumeshindwa: {str(e)[:200]}")
-    log(f"== [DB] jumla: mechi {total} zimehifadhiwa ({day}).")
-    if total == 0:
-        log(f"   ⚠ {day}: imepatikana SIFURI (Forebet blocked?) — angalia Activity Log juu (✗✗ remedies)")
-        try:
-            sb("DELETE", f"day_cache?day=eq.{day}", prefer="return=minimal")
-        except RuntimeError:
-            pass   # siku ina history (picks/matches) — DB hairuhusu kufuta; data ya zamani inabaki
-    return records_by_sport
+                errors.append(f"{sport}: Supabase upsert: {str(e)[:180]}")
+                log(f"   ✗✗ [DB] {sport}: upsert imeshindwa: {str(e)[:180]}")
+
+    # Thibitisha kwa kusoma rows zilizohifadhiwa, si idadi iliyotolewa na Forebet pekee.
+    try:
+        db_rows = sb_all(f"matches?day=eq.{day}&select=sport,home,away")
+        saved = {(str(r.get("sport") or ""), str(r.get("home") or ""), str(r.get("away") or ""))
+                 for r in db_rows}
+        missing = expected - saved
+        if missing:
+            errors.append(f"Supabase verification: mechi {len(missing)} hazipo baada ya upsert")
+            log(f"   ✗✗ [DB] uhakiki: mechi {len(missing)} hazijaonekana Supabase")
+        stored_count = len(db_rows)
+    except Exception as e:  # noqa: BLE001
+        db_rows = []
+        stored_count = 0
+        errors.append(f"Supabase verification: {str(e)[:180]}")
+        log(f"   ✗✗ [DB] kusoma tena rows za uhakiki kumeshindwa: {str(e)[:180]}")
+
+    fetched_count = sum(len(v) for v in records_by_sport.values())
+    if errors:
+        status = "partial" if stored_count else "failed"
+    else:
+        status = "succeeded" if fetched_count else "empty"
+    finished = _dt.datetime.now(_EAT).isoformat()
+    try:
+        sb("PATCH", f"day_cache?day=eq.{day}",
+           {"match_count": stored_count, "scrape_status": status,
+            "scraped_at": finished, "scrape_completed_at": finished,
+            "scrape_error": " | ".join(errors)[:2000] if errors else None,
+            "engine_version": ENGINE_VERSION}, prefer="return=minimal")
+    except Exception as e:  # noqa: BLE001
+        errors.append(f"day_cache status update: {str(e)[:180]}")
+        status = "partial" if stored_count else "failed"
+        log(f"   ✗✗ [DB] status ya day_cache haikuweza kusasishwa: {str(e)[:180]}")
+
+    log(f"== [DB] {day}: Forebet={fetched_count} · Supabase rows={stored_count} · hali={status}.")
+    if errors:
+        for error in errors:
+            log(f"   ⚠ {error}")
+    report = {"day": day, "status": status, "fetched_count": fetched_count,
+              "stored_count": stored_count, "errors": errors}
+    return (records_by_sport, report) if return_report else records_by_sport
 
 
 ENRICH_MAX = 40   # H2H detail pages kwa wateule wa engine tu (~5s kila moja → ~3 min)
@@ -358,41 +395,68 @@ def _finals_from_records(records_by_sport):
 
 
 def cmd_scrape(day, no_enrich=False):
-    """GOLD-FLOW: (1) scrape leo/day (cache-aware), (2) scrape JANA fresh (results!),
-    (3) settle picks za jana automatic."""
-    import scraper
-    _ = scraper  # sanity
-    print(f"━━━ [SCRAPE MODE] lengo: {day} + jana (results refresh) ━━━")
-    recs_d = _scrape_day(day)
-    n_day = sum(len(v) for v in recs_d.values())
+    """Chota siku iliyochaguliwa + jana, thibitisha Supabase, kisha settle jana."""
+    print(f"━━━ [SCRAPE MODE] lengo: {day} + jana (matokeo) ━━━")
+    recs_d, report_d = _scrape_day(day, return_report=True)
 
-    import datetime as dtm
-    yday = (_dt.date.fromisoformat(day) - dtm.timedelta(days=1)).isoformat()
-    print(f"\n━━━ [SCRAPE] JANA {yday} — FRESH (tunataka FT results zipate updates) ━━━")
-    # (hakuna DELETE: _scrape_day huchota upya kila mara + upsert merge; DB inalinda history)
-    recs_y = _scrape_day(yday)
+    yday = (_dt.date.fromisoformat(day) - _dt.timedelta(days=1)).isoformat()
+    print(f"\n━━━ [SCRAPE] JANA {yday} — refresh ya matokeo ━━━")
+    recs_y, report_y = _scrape_day(yday, return_report=True)
 
-    n_yday = sum(len(v) for v in recs_y.values())
+    n_day = report_d["fetched_count"]
+    n_yday = report_y["fetched_count"]
     finals = _finals_from_records(recs_y)
-    print(f"\n━━━ [SETTLE] jana {yday}: finals {len(finals)} kutoka data hio hio ━━━")
+    print(f"\n━━━ [SETTLE] jana {yday}: finals {len(finals)} zilizopatikana ━━━")
     _settle_day_from_finals(yday, finals)
 
-    print(f"\n━━━ MUHTASARI: {day} → {n_day} mechi · jana {yday} → {n_yday} mechi "
-          f"({len(finals)} na matokeo) ━━━")
-    if n_day == 0:
-        print("✗✗ SCRAPE IMESHINDWA: mechi 0 za siku husika — Forebet haikufikiwa.\n"
-              "   Suluhisho: (1) hakikisha internet, (2) INSTALL_K96.bat (curl_cffi + playwright chromium),\n"
-              "   (3) acha dirisha la browser lifunguke na upite Cloudflare, kisha jaribu tena.\n"
-              "   USIBONYEZE 'Run Engine' bado — hakuna data mpya.")
+    today_ok = report_d["status"] == "succeeded" and report_d["stored_count"] > 0
+    yesterday_ok = report_y["status"] not in ("partial", "failed")
+    overall = "succeeded" if today_ok and yesterday_ok else "partial"
+    print(f"\n━━━ MUHTASARI: leo {n_day} fetched / {report_d['stored_count']} DB · "
+          f"jana {n_yday} fetched / {report_y['stored_count']} DB · finals {len(finals)} · {overall} ━━━")
+    if not today_ok:
+        print("✗✗ SCRAPE YA SIKU ILIYOCHAGULIWA HAIJATHIBITISHWA. Usibonyeze Run Engine mpaka Activity Log ionyeshe Supabase rows.")
+        if report_d["status"] == "empty":
+            print("   Hakuna mechi zilizopatikana. Angalia internet, Forebet/Cloudflare, na tarehe uliyochagua.")
         raise SystemExit(2)
-    print("✓ SCRAPE IMEFANIKIWA — sasa bonyeza '2) Run Engine' kupata picks/slips.")
-    return {"day": n_day, "yday": n_yday, "finals": len(finals)}
+    if not yesterday_ok:
+        print("⚠ Siku iliyochaguliwa imehifadhiwa, lakini data ya jana haikuthibitishwa kikamilifu; baadhi ya matokeo yanaweza kubaki pending.")
+    print("✓ SCRAPE YA SIKU ILIYOCHAGULIWA IMEFANIKIWA NA KUTHIBITISHWA — sasa bonyeza '2) Run Engine'.")
+    return {"day": n_day, "yday": n_yday, "finals": len(finals), "status": overall,
+            "stored_day": report_d["stored_count"], "stored_yday": report_y["stored_count"]}
+
+
+def latest_successful_run_id(day, include_demo=True):
+    demo_filter = "" if include_demo else "&is_demo=eq.false"
+    rows = sb("GET", f"analysis_runs?day=eq.{day}&status=eq.succeeded{demo_filter}&select=id&order=started_at.desc,id.desc&limit=1") or []
+    return int(rows[0]["id"]) if rows else None
+
+
+def _pending_production_days():
+    pending = sb_all("picks?result=eq.pending&select=day,run_id,league&order=day,id") or []
+    runs = sb_all("analysis_runs?status=eq.succeeded&is_demo=eq.false&select=id") or []
+    valid_run_ids = {int(r["id"]) for r in runs}
+    return sorted({r["day"] for r in pending if
+                   (r.get("run_id") is not None and int(r["run_id"]) in valid_run_ids) or
+                   (r.get("run_id") is None and not str(r.get("league") or "").startswith("K96 TEST"))})
+
+
+def _settle_rows(table, day):
+    """Picks/slips za legacy (run_id NULL) pamoja na run zilizofanikiwa pekee."""
+    rows = sb("GET", f"{table}?day=eq.{day}&result=eq.pending&run_id=is.null&select=*") or []
+    runs = sb("GET", f"analysis_runs?day=eq.{day}&status=eq.succeeded&is_demo=eq.false&select=id&order=id") or []
+    ids = [int(r["id"]) for r in runs]
+    for i in range(0, len(ids), 100):
+        group = ",".join(str(x) for x in ids[i:i + 100])
+        if group:
+            rows.extend(sb_all(f"{table}?day=eq.{day}&result=eq.pending&run_id=in.({group})&select=*") or [])
+    return rows
 
 
 def _settle_day_from_finals(d, finals):
     """Settle picks+slips za siku d kutoka finals-map { (home,away): (fh,fa) }."""
     win = loss = push = unk = 0
-    pending = sb("GET", f"picks?day=eq.{d}&result=eq.pending&select=*")
+    pending = _settle_rows("picks", d)
     for p in pending or []:
         key = (p["home"], p["away"])
         if key not in finals:
@@ -424,6 +488,108 @@ def _settle_day_from_finals(d, finals):
         print(f"   ! slips settle: {e}")
 
 
+def _persist_engine_run(day, payload, match_count, is_demo=False):
+    """Hifadhi run mpya bila kufuta run za awali; run inaonekana tu baada ya saves zote kupita."""
+    start = sb_resp("POST", "analysis_runs", {
+        "day": day, "status": "running", "match_count": int(match_count), "is_demo": bool(is_demo),
+    }, prefer="return=representation")
+    if start.status_code not in (200, 201):
+        raise RuntimeError(f"analysis_runs insert imeshindwa HTTP {start.status_code}: {start.text[:180]} — RUN schema_v4_reliability.sql")
+    try:
+        run_row = start.json()
+        run_id = int(run_row[0]["id"] if isinstance(run_row, list) else run_row["id"])
+    except Exception as e:
+        raise RuntimeError(f"Supabase haikurudisha run_id: {str(e)[:100]}") from e
+
+    inserted_pick_rows, slip_rows, slips = [], [], []
+    try:
+        prob_keys = ("p_model", "p_market", "p_final", "p_cal", "bk_odds", "bookmaker", "ev", "flags")
+        prows = [{
+            "run_id": run_id, "day": day, "sport": p["sport"], "league": p.get("league", ""),
+            "time_eat": p.get("time", ""), "home": p["home"], "away": p["away"],
+            "market": p["market"], "tip": p["tip"], "conf": p["conf"],
+            "forebet": p["forebet"], "adj": p.get("adj"),
+            "odd": p.get("bk_odds") if p.get("bk_odds") is not None else p.get("odd"),
+            "rank": p.get("rank"), "why": p.get("why") or [], "decision": p.get("decision", ""),
+            "engine_version": ENGINE_VERSION,
+            **{k: p.get(k) for k in prob_keys if p.get(k) is not None},
+        } for p in payload.get("picks", [])]
+
+        if prows:
+            r_p = sb_resp("POST", "picks", prows, prefer="return=representation")
+            if r_p.status_code not in (200, 201):
+                raise RuntimeError(f"picks insert HTTP {r_p.status_code}: {r_p.text[:180]}")
+            inserted_pick_rows = r_p.json() or []
+            if len(inserted_pick_rows) != len(prows):
+                raise RuntimeError(f"picks insert count mismatch: {len(inserted_pick_rows)}/{len(prows)}")
+            for p in payload["picks"]:
+                p["_db_pick_id"] = next((r["id"] for r in inserted_pick_rows
+                    if (r.get("home"), r.get("away"), r.get("market"), r.get("tip")) ==
+                       (p.get("home"), p.get("away"), p.get("market"), p.get("tip"))), None)
+
+        import slip as _slip
+        slips = _slip.build_slips(payload.get("picks", []), topk=5, log=print)
+        payload["slips"] = slips
+        slip_payload = [{
+            "run_id": run_id, "day": day, "label": s["label"], "legs": s["legs_n"],
+            "total_odds": s["total_odds"], "joint_prob": s["joint_prob"],
+            "ev": s.get("ev"), "engine_version": ENGINE_VERSION,
+        } for s in slips]
+        if slip_payload:
+            r_sl = sb_resp("POST", "slips", slip_payload, prefer="return=representation")
+            if r_sl.status_code not in (200, 201):
+                raise RuntimeError(f"slips insert HTTP {r_sl.status_code}: {r_sl.text[:180]}")
+            slip_rows = r_sl.json() or []
+            if len(slip_rows) != len(slip_payload):
+                raise RuntimeError(f"slips insert count mismatch: {len(slip_rows)}/{len(slip_payload)}")
+            idmap = {r["label"]: r["id"] for r in slip_rows}
+            pick_id = {(p.get("home"), p.get("away"), p.get("market"), p.get("tip")): p.get("_db_pick_id")
+                       for p in payload.get("picks", [])}
+            legs_rows = []
+            for s in slips:
+                sid = idmap.get(s["label"])
+                for leg in s["legs"]:
+                    legs_rows.append({
+                        "slip_id": sid,
+                        "pick_id": pick_id.get((leg.get("home"), leg.get("away"), leg.get("market"), leg.get("tip"))),
+                        "home": leg["home"], "away": leg["away"], "market": leg["market"], "tip": leg["tip"],
+                        "odds": leg.get("bk_odds"), "p_cal": leg.get("p_cal"),
+                    })
+            if legs_rows:
+                r_l = sb_resp("POST", "slip_legs", legs_rows, prefer="return=minimal")
+                if r_l.status_code not in (200, 201, 204):
+                    raise RuntimeError(f"slip_legs insert HTTP {r_l.status_code}: {r_l.text[:180]}")
+                slip_ids = ",".join(str(int(r["id"])) for r in slip_rows)
+                saved_legs = sb_all(f"slip_legs?slip_id=in.({slip_ids})&select=id")
+                if len(saved_legs) != len(legs_rows):
+                    raise RuntimeError(f"slip_legs verification mismatch: {len(saved_legs)}/{len(legs_rows)}")
+
+        finish = sb_resp("PATCH", f"analysis_runs?id=eq.{run_id}", {
+            "status": "succeeded", "completed_at": _dt.datetime.now(_EAT).isoformat(),
+            "picks_count": len(prows), "slips_count": len(slips), "error": None,
+        }, prefer="return=minimal")
+        if finish.status_code not in (200, 204):
+            raise RuntimeError(f"analysis_runs completion HTTP {finish.status_code}: {finish.text[:180]}")
+        print(f"== [DB] run #{run_id} imehifadhiwa na kuthibitishwa: picks={len(prows)}, slips={len(slips)}.")
+        return run_id, slips
+    except Exception as e:
+        # Run is isolated by run_id; it cannot hide the last successful run.
+        try:
+            sb("DELETE", f"slips?run_id=eq.{run_id}", prefer="return=minimal")
+            sb("DELETE", f"picks?run_id=eq.{run_id}", prefer="return=minimal")
+        except Exception:
+            pass
+        try:
+            sb("PATCH", f"analysis_runs?id=eq.{run_id}", {
+                "status": "failed", "completed_at": _dt.datetime.now(_EAT).isoformat(),
+                "picks_count": len(inserted_pick_rows), "slips_count": len(slip_rows),
+                "error": str(e)[:2000],
+            }, prefer="return=minimal")
+        except Exception:
+            pass
+        raise RuntimeError(f"Run #{run_id} haikuhifadhiwa kikamilifu; run ya mwisho iliyofanikiwa imeachwa salama. {e}") from e
+
+
 # ──────────────────────────────────────────────────────────────────────────
 # MODE: run — scrape (au tumia cache) → engine → Supabase
 # ──────────────────────────────────────────────────────────────────────────
@@ -433,28 +599,30 @@ def cmd_run(day, min_prob, force, no_enrich):
     SPORTS = ["football", "basketball", "tennis"]
     cached = sb("GET", f"day_cache?day=eq.{day}&select=*")
     using_cache = bool(cached) and not force
-    # Phase 7.1 FIX: cache TUPU (match_count=0 au matches rows 0) halimfai cache — rescrape FORCE
     if using_cache:
-        mc = (cached[0].get("match_count") or 0)
+        mc = int(cached[0].get("match_count") or 0)
+        scrape_status = cached[0].get("scrape_status") or "unknown"
         n_rows = len(sb("GET", f"matches?day=eq.{day}&select=id&limit=1") or [])
-        if mc <= 0 or n_rows == 0:
-            print(f"⚠ [CACHE] cache ya {day} IKO TUPU (match_count={mc}, rows={n_rows}) — "
-                  "scraping ya kwanza ilishindika; tunafuta day_cache TUPU + rescrape FRESH…")
-            try:
-                sb("DELETE", f"day_cache?day=eq.{day}", prefer="return=minimal")
-            except RuntimeError:
-                pass   # DB inalinda history — rescrape itafanya upsert juu yake
+        if mc <= 0 or n_rows == 0 or scrape_status != "succeeded":
+            print(f"⚠ [CACHE] {day}: hali={scrape_status}, match_count={mc}, rows={n_rows} — cache haitumiki; rescrape.")
             using_cache = False
 
     if using_cache:
-        print(f"== [CACHE] siku {day} imeshapatikana (scraped_at {cached[0]['scraped_at']}) — tunatumia data hizo; Forebet haiguswi.")
+        print(f"== [CACHE] siku {day} imethibitishwa ({cached[0].get('scraped_at')}) — tunatumia data za Supabase.")
         rows = sb_all(f"matches?day=eq.{day}&select=*&order=time_eat,id")
         records_by_sport = {s: [] for s in SPORTS}
         for row in rows:
-            records_by_sport[row["sport"]].append(row_to_rec(row))
+            if row.get("sport") in SPORTS:
+                records_by_sport[row["sport"]].append(row_to_rec(row))
         records_by_sport = {s: v for s, v in records_by_sport.items() if v}
+        if not records_by_sport:
+            raise SystemExit("Cache ilisema imefanikiwa lakini haina mechi; kagua scrape status.")
     else:
-        records_by_sport = _scrape_day(day)
+        records_by_sport, scrape_report = _scrape_day(day, return_report=True)
+        if scrape_report["status"] != "succeeded" or scrape_report["stored_count"] <= 0:
+            print(f"✗ Run Engine imesimamishwa: scrape status={scrape_report['status']}, "
+                  f"Forebet={scrape_report['fetched_count']}, Supabase={scrape_report['stored_count']}.")
+            raise SystemExit(2)
 
     if not no_enrich and records_by_sport:
         try:
@@ -570,68 +738,13 @@ def cmd_run(day, min_prob, force, no_enrich):
     except Exception as e:  # noqa: BLE001
         print(f"   ⚠ [BOOKIE] verification ikishindwa kabisa ({str(e)[:120]}) — picks zinabaki vilevile.")
 
-    # furaga picks (futa za zamu iliyopita, weka mpya — engine inabadilika)
-    sb("DELETE", f"picks?day=eq.{day}", prefer="return=minimal")
-    PROB_KEYS = ("p_model", "p_market", "p_final", "p_cal", "bk_odds", "bookmaker", "ev", "flags")
-    prows = [{
-        "day": day, "sport": p["sport"], "league": p.get("league", ""),
-        "time_eat": p.get("time", ""), "home": p["home"], "away": p["away"],
-        "market": p["market"], "tip": p["tip"], "conf": p["conf"],
-        "forebet": p["forebet"], "adj": p.get("adj"),
-        "odd": p.get("bk_odds") if p.get("bk_odds") is not None else p.get("odd"),
-        "rank": p.get("rank"), "why": p.get("why") or [], "decision": p.get("decision", ""),
-        "engine_version": ENGINE_VERSION,
-        **{k: p.get(k) for k in PROB_KEYS if p.get(k) is not None},
-    } for p in payload["picks"]]
-    if prows:
-        r_p = sb_resp("POST", "picks", prows, prefer="return=minimal")
-        if r_p.status_code >= 400:
-            # schema_v2 haijatumika bado? jaribio la pili bila prob columns
-            sb("DELETE", f"picks?day=eq.{day}", prefer="return=minimal")
-            prows_slim = [{k: v for k, v in row.items() if k not in PROB_KEYS} for row in prows]
-            r2 = sb_resp("POST", "picks", prows_slim, prefer="return=minimal")
-            if r2.status_code >= 400:
-                print(f"   ⚠ [DB] picks insert imefeli: HTTP {r2.status_code} {r2.text[:160]} — "
-                      f"angalia schema (RUN schema_v2.sql ili kupata columns za prob)")
-            else:
-                print("   ⚠ [DB] imehifadhiwa BILA p_model/p_cal (schema_v2 haijarun — fanya hivo)")
-    print(f"== [DB] picks {len(prows)} zimehifadhiwa siku {day}.")
-
-    # ── PHASE 5: BETSLIPS (safest subset kufikia lengo odds, joint-P max) ──────
-    slips = []
-    try:
-        import slip as _slip
-        slips = _slip.build_slips(payload["picks"], topk=5, log=print)
-        payload["slips"] = slips
-    except Exception as e:  # noqa: BLE001
-        print(f"   ⚠ [slips] imeshindika: {str(e)[:110]}")
-
-    if slips:
-        try:
-            sb("DELETE",
-               f"slips?day=eq.{day}", prefer="return=minimal")
-            r_sl = sb_resp("POST", "slips", [{
-                "day": day, "label": s["label"], "legs": s["legs_n"],
-                "total_odds": s["total_odds"], "joint_prob": s["joint_prob"],
-                "ev": s.get("ev"), "engine_version": ENGINE_VERSION} for s in slips],
-                prefer="return=representation")
-            if r_sl and r_sl.status_code in (200, 201):
-                srows = r_sl.json()
-                idmap = {r["label"]: r["id"] for r in srows}
-                legs_rows = []
-                for s in slips:
-                    sid = idmap.get(s["label"])
-                    for l in s["legs"]:
-                        legs_rows.append({"slip_id": sid, "home": l["home"], "away": l["away"],
-                                          "market": l["market"], "tip": l["tip"],
-                                          "odds": l.get("bk_odds"), "p_cal": l.get("p_cal")})
-                if legs_rows:
-                    sb("POST", "slip_legs", legs_rows, prefer="return=minimal")
-                print(f"   [SLIPS] {len(slips)} slips zimehifadhiwa Supabase ✓")
-            else:
-                print("   [SLIPS] table haipo — RUN schema_v2.sql Supabase (kuweza ku-save slips)")
-        except Exception as e:  # noqa: BLE001
-            print(f"   ⚠ [SLIPS] save ikishindwa: {str(e)[:110]}")
+    # Hifadhi run mpya tofauti; hakuna kufuta picks/slips za run za awali.
+    match_count = sum(len(v) for v in records_by_sport.values())
+    run_id, slips = _persist_engine_run(day, payload, match_count)
+    payload["run_id"] = run_id
+    for pick in payload.get("picks", []):
+        pick.pop("_db_pick_id", None)
+    import slip as _slip
     print(_slip.slip_copy_text(slips) if slips else "")
     print(picks.copy_text(payload))
     return payload
@@ -685,8 +798,7 @@ def cmd_settle(day=None):
     if day:
         days = [day]
     else:
-        rows = sb_all("picks?result=eq.pending&select=day&order=day,id")
-        days = sorted({r["day"] for r in (rows or []) if r["day"] < today_eat().isoformat()})
+        days = [d for d in _pending_production_days() if d < today_eat().isoformat()]
     if not days:
         print("== hakuna picks zinazosubiri matokeo.")
         return
@@ -706,7 +818,7 @@ def cmd_settle(day=None):
                     continue
                 if r.get("sc") and None not in r["sc"]:
                     finals[(r["home"], r["away"])] = (int(r["sc"][0]), int(r["sc"][1]))
-        pending = sb("GET", f"picks?day=eq.{d}&result=eq.pending&select=*")
+        pending = _settle_rows("picks", d)
         win = loss = push = unk = 0
         for p in pending or []:
             key = (p["home"], p["away"])
@@ -736,20 +848,24 @@ def cmd_settle(day=None):
 
 def settle_slips(day_iso):
     """spec 8.1: slip inashinda ikifika yote (void legs hutolewa — odds hupunguzwa)."""
-    rows = sb("GET", f"slips?day=eq.{day_iso}&result=eq.pending") or []
+    rows = _settle_rows("slips", day_iso)
     if not rows:
         return
     for s in rows:
         legs = sb("GET", f"slip_legs?slip_id=eq.{s['id']}") or []
         if not legs:
             continue
-        # result ya kila leg kutoka picks table (home+away+market+tip match)
+        # Pick ID huunganisha leg na run husika; legacy rows hutumia match key.
         done = True
         res_of = []
         for l in legs:
-            kws = (f"day=eq.{day_iso}&home=eq.{urllib.parse.quote(l['home'])}"
-                   f"&away=eq.{urllib.parse.quote(l['away'])}")
-            pr = sb("GET", f"picks?{kws}&order=id.desc&limit=1") or []
+            if l.get("pick_id") is not None:
+                pr = sb("GET", f"picks?id=eq.{int(l['pick_id'])}&select=result&limit=1") or []
+            else:
+                kws = (f"day=eq.{day_iso}&home=eq.{urllib.parse.quote(l['home'])}"
+                       f"&away=eq.{urllib.parse.quote(l['away'])}&market=eq.{urllib.parse.quote(l['market'])}"
+                       f"&tip=eq.{urllib.parse.quote(l['tip'])}")
+                pr = sb("GET", f"picks?{kws}&order=id.desc&limit=1") or []
             if not pr or (pr[0].get("result") in (None, "pending")):
                 done = False
                 break
@@ -809,7 +925,9 @@ def _odds_refresh(day_iso):
     import sys as _s
     _s.path.insert(0, str(BACKEND.parent / "forebet_picks_app"))
     import bookie
-    pr = sb("GET", f"picks?day=eq.{day_iso}&select=*") or []
+    run_id = latest_successful_run_id(day_iso, include_demo=False)
+    run_filter = f"&run_id=eq.{run_id}" if run_id is not None else "&run_id=is.null"
+    pr = sb_all(f"picks?day=eq.{day_iso}{run_filter}&select=*") or []
     if not pr:
         return
     provider = bookie.make_provider(day_iso, print)
@@ -846,13 +964,15 @@ def cmd_daemon(min_prob=80):
     last_calib = today_eat().isocalendar()[:2]
     # 🔁 catch-up mara moja (PC iliwaka baadaye)
     try:
-        cached = sb("GET", f"day_cache?day=eq.{today}&select=day") or []
-        if not cached:
-            print(f"== [DAEMON] leo {today} haijachotwa — inachota sasa hivi…")
+        cached = sb("GET", f"day_cache?day=eq.{today}&select=day,match_count,scrape_status") or []
+        cache_ok = bool(cached) and cached[0].get("scrape_status") == "succeeded" \
+            and int(cached[0].get("match_count") or 0) > 0
+        if not cache_ok:
+            print(f"== [DAEMON] cache ya leo {today} haijathibitishwa — inachota na kuchambua sasa hivi…")
             cmd_run(today, min_prob, False, False)
             last_run = today
-        pend = sb("GET", "picks?result=eq.pending&select=day&order=day&limit=200") or []
-        if any(p["day"] < today for p in pend):
+        pend_days = _pending_production_days()
+        if any(d < today for d in pend_days):
             print("== [DAEMON] kuna picks za zamani zisizo-settled — settle scratch…")
             cmd_settle()
             last_settle = today
@@ -860,8 +980,8 @@ def cmd_daemon(min_prob=80):
         print("  !! catch-up imekwanguka:", e)
     while True:
         try:
-            now = _dt.datetime.now()
-            t = now.strftime("%Y-%m-%d")
+            now = _dt.datetime.now(_EAT)
+            t = now.date().isoformat()
             # 🕧 Saa 00:00–00:05 — scrape ya LEO
             if now.hour == 0 and now.minute < 6 and last_run != t:
                 print(f"== [DAEMON] scrape ya {t} (00:00 EAT)…")

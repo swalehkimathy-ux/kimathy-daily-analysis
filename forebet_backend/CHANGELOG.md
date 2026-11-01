@@ -1,5 +1,14 @@
 # K96 PICKS — CHANGELOG (per Implementation-Spec phases)
 
+## Phase 8.H — v2.8.4 (2026-11-01) ✅ UHAKIKI WA SUPABASE + RUN HISTORY SALAMA
+- Scraper sasa huhesabu rows za Forebet na kuzihakiki Supabase kabla ya kusema imefanikiwa; status ya cache huonyesha succeeded/partial/failed/empty.
+- `scraped_at` husasishwa baada ya scrape, `match_count` ya zamani haifutwi kabla ya mafanikio, na cache isiyothibitishwa haitumiki na Engine/daemon.
+- Kila Engine run huhifadhiwa kwa `analysis_runs` na `run_id`; picks/slips za awali hazifutwi. Run iliyofeli haifichi run ya mwisho iliyofanikiwa; slips sifuri zinaonekana kama sifuri, si stale.
+- Settlement ya slip sasa hutumia `pick_id` sahihi; rerun nyingi za siku hazijumuishwi mara nyingi kwenye stats za latest-run.
+- UI/backend/daemon hutumia EAT; daemon inakagua cache iliyothibitishwa kabla ya catch-up.
+- RLS ya anon imefungwa kwa data ya picks/slips; GUI server inafungwa kwa loopback; `test_supabase.py` hukagua anon deny. Distribution ZIP haijumuishi `.env.local`; `.env.local` haifuatiliwi na Git.
+- SQL migration mpya: `schema_v4_reliability.sql` (endesha baada ya schema v1–v3).
+
 ## Phase 8.G — v2.8.3 (2026-11-01) ✅ RUN ENGINE HAIKWAMI BOOKIE ZIKIWA DOWN
 **Tatizo:** devig ya bookie inaitwa kwa KILA mechi (~1353). Betway/betPawa zikiwa hazifikiki,
 kila mechi ilijaribu upya `day_index` (timeout 25s × 2) → Run Engine ingeweza kuchukua MASAA.

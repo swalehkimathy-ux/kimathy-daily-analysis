@@ -1,4 +1,4 @@
-# 🟢 K96 PICKS — Smart Pick Engine (v2.8.3 / smart-engine v1.0)
+# 🟢 K96 PICKS — Smart Pick Engine (v2.8.4 / smart-engine v1.0)
 
 **K96 PICKS** ni desktop programu ya uchambuzi wa kubeti: Forebet (probabilities) × Betway/betPawa (soko halisi) → **smart-engine v0.3** → Slips salama (odds target yako).
 
@@ -12,9 +12,9 @@
 ## 🚀 HATUA ZA KWANZA (PC mpya, ~10 min)
 
 0. **Ondoa K96 ya zamani**: Settings → Apps → "K96 PICKS" → Uninstall (kama uliwahi kusakinisha installer ya zamani), na futa folda za zamani.
-1. **Unzip** `K96_PICKS_PC_v2.8.3.zip` popote (mf. `C:\K96`).
-2. **`.env.local` IMO NDANI** ya `forebet_backend/` tayari (Supabase URL + keys) — hakuna cha kuweka.
-3. **Supabase SQL Editor** (mara moja tu, kama bado): RUN `schema.sql` **+ `schema_v2.sql`** **+ `schema_v3_security.sql`** (inaondoa maonyo ya Security Advisor).
+1. **Unzip** `K96_PICKS_PC_v2.8.4.zip` popote (mf. `C:\K96`).
+2. Kwa source zip, tengeneza `forebet_backend/.env.local` kwa kunakili `.env.example`, kisha jaza URL na keys kwenye PC yako tu. Kwa Electron installer, weka faili hiyo ndani ya `resources/backend/`. Usiiweke GitHub, zip au chat.
+3. **Supabase SQL Editor** (mara moja tu, kama bado): endesha kwa mpangilio `schema.sql` → `schema_v2.sql` → `schema_v3_security.sql` → `schema_v4_reliability.sql`.
 4. **Sakinisha**: double-click `forebet_backend\INSTALL_K96.bat` (pip deps + Playwright Chromium).
 5. **Jaribu**: `forebet_backend\TEST_CONNECTION.bat` → lazima **7/7 PASS ✓**.
 6. **Anzisha**: icon **"K96 PICKS"** ya Desktop (au double-click **`K96_START.bat`**) → browser inafunguka yenyewe (http://127.0.0.1:8777).
@@ -28,7 +28,8 @@
 | 2 | **🔍 2) Run Engine (picks/slips)** | Inasoma data za hatua 1 (bila kuscrape tena) → H2H kwa wateule ≤40 tu (~3 dk) → engine v1.0 → uhakiki wa bookie → **Picks + Slips**. |
 | 3 | **🏁 Results** tab | Matokeo ya siku iliyochaguliwa (default: jana) — win/loss/push + hit rate. |
 
-> Scraper ikipata mechi **0**, GUI inaonyesha onyo jekundu na sababu (Activity Log) — **usibonyeze Run Engine** hadi scrape ifanikiwe.
+> UI hutambua tarehe mpya ya EAT kila dakika, lakini kubadilika kwa tarehe **hakuanzi scrape/engine yenyewe**. Bonyeza Run Scraper, au endesha daemon kwa PC iliyo online.
+> Scraper ikipata mechi **0**, au Supabase verification ikishindwa, GUI inaonyesha kosa kwenye Activity Log — **usibonyeze Run Engine** hadi scrape ithibitishwe.
 > CLI: `python worker.py scrape --date 2026-10-31` · `python worker.py run --date 2026-10-31`
 
 > ⏰ **Daemon (auto):** `python worker.py daemon` — PC ikikuwa online 24/7: picks za 00:00, settle 01:00, odds-refresh 06:00/12:00, calibration Jumatatu 04:00.
@@ -47,10 +48,10 @@
 odds ya leg (1.05–3.50), slip target (1.85–2.50), MAX legs (12), FORCE N (au acha auto), min leg prob (0.75), friendly block.
 
 ## 🛡️ Usalama (CRITICAL)
-- `.env.local` HAIZIKI kwenye zip/exe kamwe — iwe pembeni ya exe/control. `.gitignore` + `.env.example` tayari.
-- Supabase RLS: anon key hujiruhusu kusoma TU; service_role inakalili PC pekee.
-- Keys zikivuja: **Supabase → Settings → API → Rotate** → update `.env.local`.
-- `test_supabase.py` inathibitisha: anon write → 401 ✓ (RLS inafanya kazi)
+- `.env.local` HAIZIKI GitHub/zip/exe kamwe — tengeneza locally kutoka `.env.example`; `.gitignore` inailinda.
+- Baada ya `schema_v4_reliability.sql`, anon haina ruhusa ya kusoma picks/slips; GUI server hufungwa kwa `127.0.0.1` na worker hutumia service_role upande wa PC pekee.
+- Keys zikivuja au zimewahi kuingia Git: **Supabase → Settings → API → Rotate** → update `.env.local`.
+- `test_supabase.py` hukagua service-role access, anon deny, tables muhimu na round-trip ya test.
 
 ## 📚 Files muhimu
 ```
@@ -74,4 +75,4 @@ forebet_picks_app/
 - Backtest (historically) ni model-only bila devig (snapshot accumulation inaendelea)
 
 ## 📞 Version
-`v2.8.3 · smart-engine v1.0 (K96 ENGINE RULES) · 2026-11-01 · By Kimathy96`
+`v2.8.4 · reliability + history-safe runs (K96 ENGINE RULES) · 2026-11-01 · By Kimathy96`

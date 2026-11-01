@@ -2,7 +2,7 @@
 title K96 PICKS - Kusakinisha (endesha mara MOJA tu)
 cd /d "%~dp0"
 echo ==========================================================
-echo    K96 PICKS v2.8.3 - One-Click Setup
+echo    K96 PICKS v2.8.4 - One-Click Setup
 echo ==========================================================
 echo.
 

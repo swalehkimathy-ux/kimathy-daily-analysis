@@ -12,7 +12,7 @@ const { spawn } = require("child_process");
 const PORT = 8777;
 const URL_ = `http://127.0.0.1:${PORT}/`;
 const BOOT_TIMEOUT_MS = 45000;
-const APP_VERSION = "2.8.3";
+const APP_VERSION = "2.8.4";
 let backend = null;
 let win = null;
 let bootLog = "";
@@ -58,7 +58,7 @@ function showError(reason) {
     <ol>
       <li>Hakikisha <b>Python</b> imesakinishwa (python.org — tick "Add python.exe to PATH").</li>
       <li>Endesha <b>INSTALL_K96.bat</b> mara moja (inasakinisha dependencies).</li>
-      <li>Hakikisha <b>.env.local</b> ipo kwenye folda ya backend.</li>
+      <li>Tengeneza <b>.env.local</b> kutoka <b>.env.example</b> kwenye folda ya backend, ujaze keys zako za Supabase.</li>
       <li>Funga programu nyingine inayotumia port ${PORT}, kisha jaribu tena.</li>
     </ol>
     ${tail ? `<pre>${esc(tail)}</pre>` : ""}

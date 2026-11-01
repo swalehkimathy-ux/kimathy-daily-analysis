@@ -83,7 +83,7 @@ ikikawa nyingi, top-10 kwa confidence.
   - `matches` (mechi zote + final scores + raw jsonb)
   - `picks` (tips + result + why/decision + engine_version)
   - `engine_stats` (view: hit-% kwa market+sport — ndiyo "learning data")
-  - **RLS**: anon inasoma tu (APK salama), service_role inaandika (PC tu)
+  - **RLS (v2.8.4):** anon haina access ya picks/slips; worker hutumia service_role server-side kwenye PC tu
 
 ### D. GUI (`index.html` + `gui_server.py`)
 
@@ -116,7 +116,7 @@ ikikawa nyingi, top-10 kwa confidence.
 - ✅ `settle_pick` — 9/9 masoko ya bets (win/loss/push sahihi)
 - ✅ Engine E2E (Liverpool 1X @98, Man City Over 1.5 @85, women blocked, friendly flagged)
 - ✅ Pipeline halisi → Supabase: seed 7 mechi/picks → settle 6W/1L → results 85.7% hit
-- ✅ RLS: anon inasoma yes / kuandika HAPANA (HTTP 401)
+- ✅ RLS (v2.8.4): anon haisomi wala kuandika; worker service_role pekee hufikia DB upande wa PC
 - ✅ Day-cache: mara 2+ inatumia data hiyo-hiyo (Forebet haiguswi)
 - ✅ GUI: spinner, tabs 5, settings persisted, results day-filter — zote GREEN
 

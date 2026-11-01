@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-K96 PICKS — GUI server (local web GUI, hakuna dependencies mpya!).
-Inatumia http.server ya Python pekee. Bind 0.0.0.0 ili preview ionekane.
+K96 PICKS — GUI server ya desktop ya PC (hakuna dependencies mpya).
+Inatumia http.server ya Python pekee na hufungwa kwa loopback ili service_role API isionekane kwenye LAN.
 
 Endpoints:
   GET  /                 → index.html (GUI)
@@ -44,8 +44,8 @@ def res_path(name):
             return cand
     return BACKEND / name
 
-HOST, PORT = "0.0.0.0", 8777
-APP_VERSION = "2.8.3"
+HOST, PORT = "127.0.0.1", 8777
+APP_VERSION = "2.8.4"
 _EAT = _dt.timezone(_dt.timedelta(hours=3))
 
 
@@ -124,8 +124,10 @@ def demo_payload(day):
 
 
 def real_payload(day):
-    from worker import sb, sb_all
-    prows = sb("GET", f"picks?day=eq.{day}&select=*&order=rank") or []
+    from worker import sb, sb_all, latest_successful_run_id
+    run_id = latest_successful_run_id(day)
+    run_filter = f"&run_id=eq.{run_id}" if run_id is not None else "&run_id=is.null"
+    prows = sb("GET", f"picks?day=eq.{day}{run_filter}&select=*&order=rank") or []
     mrows = sb_all(f"matches?day=eq.{day}&select=sport&order=id")
     counts = {}
     for m in mrows:
@@ -194,13 +196,16 @@ def results_payload(day=None, demo=False):
             rows = _results_from_picks(pay["picks"], finals)
             by_day[d] = [r for r in rows if r["result"] != "pending"]
     else:
-        from worker import sb
-        # onyesha PIA zilizo pending (chip ya ⏳): mtu ajue matokeo yabaki bado
+        from worker import sb, latest_successful_run_id
+        # Onyesha run ya mwisho iliyofanikiwa kwa tarehe; run iliyofeli haiwezi kuficha matokeo ya zamani.
         if day:
-            qs = f"picks?day=eq.{day}&select=*&order=rank"
+            run_id = latest_successful_run_id(day)
+            run_filter = f"&run_id=eq.{run_id}" if run_id is not None else "&run_id=is.null"
+            qs = f"picks?day=eq.{day}{run_filter}&select=*&order=rank"
+            rows = sb("GET", qs) or []
         else:
-            qs = "picks?select=*&order=day.desc,rank&limit=150"
-        for p in sb("GET", qs) or []:
+            rows = sb("GET", "picks?run_id=is.null&select=*&order=day.desc,rank&limit=150") or []
+        for p in rows:
             by_day.setdefault(p["day"], []).append({
                 "sport": p["sport"], "home": p["home"], "away": p["away"],
                 "match": f'{p["home"]} vs {p["away"]}', "league": p.get("league") or "",
@@ -333,66 +338,94 @@ def start_job(mode, day=None, min_prob=80, enrich=True):
 
 # ─────────────────────────── HTTP handler ──────────────────────────────────────────
 # ────────────────── SEED/CLEAN demo → Supabase (testing ya pipeline halisi) ──────
-FINALS_DEMO = {("Bayern Munich", "Bochum"): (3, 0), ("Liverpool", "Tottenham"): (3, 1),
-               ("Man City", "Chelsea"): (1, 0), ("Genoa", "Torino"): (1, 0),
-               ("Real Madrid", "Al Nassr"): (2, 2), ("LA Lakers", "Chicago Bulls"): (108, 101),
-               ("I. Swiatek", "C. Gauff"): (2, 1)}
+FINALS_DEMO = {("K96 Demo Bayern Munich", "K96 Demo Bochum"): (3, 0),
+               ("K96 Demo Liverpool", "K96 Demo Tottenham"): (3, 1),
+               ("K96 Demo Man City", "K96 Demo Chelsea"): (1, 0),
+               ("K96 Demo Genoa", "K96 Demo Torino"): (1, 0),
+               ("K96 Demo Real Madrid", "K96 Demo Al Nassr"): (2, 2),
+               ("K96 Demo LA Lakers", "K96 Demo Chicago Bulls"): (108, 101),
+               ("K96 Demo I. Swiatek", "K96 Demo C. Gauff"): (2, 1)}
 
 
 def seed_demo(day):
-    """Andika demo-records kwenye Supabase (kama worker) → engine → picks.
-    Huithibitisha cache-mode: ikitumwa mara ya pili, DB inarudia zile-zile."""
-    from worker import sb, rec_to_row
+    """Andika fixtures bandia zenye majina ya K96 Demo; haziwezi kufuta/kugongana na data halisi."""
+    from worker import sb, rec_to_row, _persist_engine_run
     import engine
     records = demo_records(day)
-    rows = [rec_to_row(day, s, r) for s, rs in records.items() for r in rs]
-    sb("POST", "day_cache?on_conflict=day",
-       {"day": day, "match_count": len(rows), "engine_version": "seed-demo"},
-       prefer="resolution=merge-duplicates,return=minimal")
+    demo_records_db = {sport: [] for sport in records}
+    for sport, recs in records.items():
+        for rec in recs:
+            item = dict(rec)
+            item["home"] = "K96 Demo " + str(item.get("home") or "")
+            item["away"] = "K96 Demo " + str(item.get("away") or "")
+            demo_records_db[sport].append(item)
+    rows = [rec_to_row(day, s, r) for s, rs in demo_records_db.items() for r in rs]
+
+    cache = sb("GET", f"day_cache?day=eq.{day}&select=day") or []
+    created_cache = not cache
+    now = _dt.datetime.now(_EAT).isoformat()
+    if created_cache:
+        sb("POST", "day_cache?on_conflict=day",
+           {"day": day, "match_count": 0, "engine_version": "seed-demo",
+            "scrape_status": "running", "scrape_started_at": now},
+           prefer="resolution=merge-duplicates,return=minimal")
     sb("POST", "matches?on_conflict=day,sport,home,away", rows,
        prefer="resolution=merge-duplicates,return=minimal")
+    if created_cache:
+        sb("PATCH", f"day_cache?day=eq.{day}",
+           {"match_count": len(rows), "scrape_status": "succeeded", "scraped_at": now,
+            "scrape_completed_at": now, "scrape_error": None}, prefer="return=minimal")
+
     engine.MIN_CONF = 80
     engine.RELAX_STEPS = [80, 75, 70]
-    picks_, used = engine.analyze_day(records, log=lambda s: None)
-    sb("DELETE", f"picks?day=eq.{day}", prefer="return=minimal")
-    prows = [{"day": day, "sport": p["sport"], "league": p.get("league", ""),
-              "time_eat": p.get("time", ""), "home": p["home"], "away": p["away"],
-              "market": p["market"], "tip": p["tip"], "conf": p["conf"],
-              "forebet": p["forebet"], "adj": p.get("adj"), "odd": p.get("odd"),
-              "rank": p.get("rank"), "why": p.get("why") or [], "decision": p.get("decision", ""),
-              "engine_version": "seed-demo"} for p in picks_]
-    if prows:
-        sb("POST", "picks", prows, prefer="return=minimal")
-    return {"ok": True, "matches": len(rows), "picks": len(prows)}
+    picks_, _ = engine.analyze_day(demo_records_db, log=lambda s: None)
+    run_id, slips = _persist_engine_run(day, {"picks": picks_}, len(rows), is_demo=True)
+    return {"ok": True, "matches": len(rows), "picks": len(picks_), "slips": len(slips), "run_id": run_id}
 
 
 def seed_results(day):
-    """Matokeo bandia → update matches finals + settle picks (pipeline ya 'settle' halisi)."""
+    """Matokeo bandia huathiri K96 Demo pekee, si picks halisi za tarehe hiyo."""
     from worker import sb, settle_pick
+    runs = sb("GET", f"analysis_runs?day=eq.{day}&is_demo=eq.true&status=eq.succeeded&select=id") or []
     n = w = l = 0
     for (home, away), (fh, fa) in FINALS_DEMO.items():
         sb("PATCH", f"matches?day=eq.{day}&home=eq.{urllib.parse.quote(home)}&away=eq.{urllib.parse.quote(away)}",
            {"final_home": fh, "final_away": fa, "status": "Finished"}, prefer="return=minimal")
-        for p in sb("GET", f"picks?day=eq.{day}&home=eq.{urllib.parse.quote(home)}&away=eq.{urllib.parse.quote(away)}&result=eq.pending&select=*") or []:
-            res = settle_pick(p["market"], p["tip"], fh, fa)
-            sb("PATCH", f"picks?id=eq.{p['id']}",
-               {"result": res, "final_score": f"{fh}-{fa}", "settled_at": _dt.datetime.utcnow().isoformat()},
-               prefer="return=minimal")
-            n += 1
-            w += res == "win"
-            l += res == "loss"
+        for run in runs:
+            for p in sb("GET", f"picks?day=eq.{day}&run_id=eq.{int(run['id'])}&home=eq.{urllib.parse.quote(home)}"
+                                f"&away=eq.{urllib.parse.quote(away)}&result=eq.pending&select=*") or []:
+                res = settle_pick(p["market"], p["tip"], fh, fa)
+                sb("PATCH", f"picks?id=eq.{p['id']}",
+                   {"result": res, "final_score": f"{fh}-{fa}", "settled_at": _dt.datetime.now(_EAT).isoformat()},
+                   prefer="return=minimal")
+                n += 1
+                w += res == "win"
+                l += res == "loss"
     return {"ok": True, "settled": n, "wins": w, "losses": l}
 
 
 def cleanup_demo():
+    """Futa test rows tu; picks/mechi halisi haziathiriki."""
     from worker import sb
-    d1 = sb("DELETE", "picks?league=ilike.K96%20TEST%25", prefer="return=representation") or []
-    d2 = sb("DELETE", "matches?league=ilike.K96%20TEST%25", prefer="return=representation") or []
-    # futa day_cache zenye 0 mechi zinazohusiana (siku za jaribio pekee)
-    d1 = sb("DELETE", "picks?league=ilike.K96%20TEST%25", prefer="return=representation") or []
-    d2 = sb("DELETE", "matches?league=ilike.K96%20TEST%25", prefer="return=representation") or []
-    d3 = sb("DELETE", "day_cache?engine_version=eq.seed-demo", prefer="return=representation") or []
-    return {"ok": True, "picks_deleted": len(d1), "matches_deleted": len(d2), "days_deleted": len(d3)}
+    runs = sb("GET", "analysis_runs?is_demo=eq.true&select=id") or []
+    ids = [int(r["id"]) for r in runs]
+    picks_deleted = slips_deleted = runs_deleted = 0
+    for i in range(0, len(ids), 100):
+        group = ",".join(str(x) for x in ids[i:i + 100])
+        if not group: continue
+        slips_deleted += len(sb("DELETE", f"slips?run_id=in.({group})", prefer="return=representation") or [])
+        picks_deleted += len(sb("DELETE", f"picks?run_id=in.({group})", prefer="return=representation") or [])
+        runs_deleted += len(sb("DELETE", f"analysis_runs?id=in.({group})", prefer="return=representation") or [])
+    legacy = sb("DELETE", "picks?league=ilike.K96%20TEST%25", prefer="return=representation") or []
+    picks_deleted += len(legacy)
+    matches_deleted = len(sb("DELETE", "matches?league=ilike.K96%20TEST%25", prefer="return=representation") or [])
+    days_deleted = 0
+    try:
+        days_deleted = len(sb("DELETE", "day_cache?engine_version=eq.seed-demo", prefer="return=representation") or [])
+    except RuntimeError:
+        pass  # Cache yenye data halisi haifutwi; trigger ya SQL inalinda historia.
+    return {"ok": True, "picks_deleted": picks_deleted, "slips_deleted": slips_deleted,
+            "matches_deleted": matches_deleted, "runs_deleted": runs_deleted, "days_deleted": days_deleted}
 
 
 # ─────────────────────────── HTTP handler ──────────────────────────────────────────
@@ -450,8 +483,10 @@ class H(BaseHTTPRequestHandler):
                 day = (q.get("day") or [today_eat().isoformat()])[0]
                 out = {"ok": True, "day": day, "slips": []}
                 try:
-                    from worker import sb
-                    slips = sb("GET", f"slips?day=eq.{day}&order=id.desc") or []
+                    from worker import sb, latest_successful_run_id
+                    run_id = latest_successful_run_id(day)
+                    run_filter = f"&run_id=eq.{run_id}" if run_id is not None else "&run_id=is.null"
+                    slips = sb("GET", f"slips?day=eq.{day}{run_filter}&order=id.desc") or []
                     ids = ",".join(str(s["id"]) for s in slips) or "0"
                     legs = sb("GET", f"slip_legs?slip_id=in.({ids})") or []
                     for s_ in slips:

@@ -38,7 +38,7 @@ def pava(xs, ys):
 
 
 def main(min_n=300):
-    rows = worker.sb("GET", "picks?result=in.(win,loss)&p_cal=not.is.null&select=p_cal,result")
+    rows = worker.sb_all("calibration_samples?select=p_cal,result&order=p_cal")
     rows = rows or []
     n = len(rows)
     print(f"== CALIBRATION: settled picks zilizopo: {n}")

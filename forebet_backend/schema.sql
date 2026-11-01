@@ -107,21 +107,13 @@ create index if not exists idx_picks_day      on public.picks(day);
 create index if not exists idx_picks_result   on public.picks(result);
 create index if not exists idx_picks_market   on public.picks(market);
 
--- ─── HATUA 6: RLS (usalama) — app inasoma tu, worker pekee inaandika ─────
+-- ─── HATUA 6: RLS — hakuna anon access; worker pekee hutumia service_role ─
 alter table public.day_cache enable row level security;
 alter table public.matches    enable row level security;
 alter table public.picks      enable row level security;
 
--- Android APK inatumia ANON KEY → anasoma tu (read-only)
-drop policy if exists anon_read_day_cache on public.day_cache;
-create policy anon_read_day_cache on public.day_cache for select using (true);
-drop policy if exists anon_read_matches   on public.matches;
-create policy anon_read_matches   on public.matches   for select using (true);
-drop policy if exists anon_read_picks     on public.picks;
-create policy anon_read_picks     on public.picks     for select using (true);
-
--- WORKER (PC yako) inatumia SERVICE_ROLE KEY (write full access — haikabidhi RLS).
--- ⚠ SERVICE_ROLE KEY ISIWE ndani ya APK kamwe — PC tu!
+-- Hakuna SELECT/INSERT/UPDATE policy ya anon au authenticated kwa app hii ya desktop.
+-- WORKER hutumia SERVICE_ROLE KEY upande wa PC (bypasses RLS); usiiweke kwenye frontend/APK.
 
 -- ─── HATUA 7: maombi ya kawaida (ku-reference baadaye) ────────────────────
 -- 1) Tips za leo:

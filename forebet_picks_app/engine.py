@@ -1,20 +1,18 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-SMART ENGINE v1.0 — tabaka la maamuzi LETU (sio la Forebet).
-Forebet = chanzo cha DATA pekee. Uamuzi wa mwisho hufanywa na rules nyingi hapa.
+SMART ENGINE v1.0 — Forebet supplies forecasts/data; this module creates and ranks tips.
 
-  0. USALAMA: ligi/klabu za watoto (U21/U19/youth/academy/reserves) + wanawake → ZIONDOWE.
-  1. UCHAGUZI: kila mechi inaangaliwa (hakuna kumwaga mapema):
-       • mechi yenye favorite (prob≥50) → direct / DC / DNB / EH inawezekana
-       • mechi ngumu (hakuna favorite wazi)  → TOTALS / BTTS / zenye λ bora
-  2. UHAKIKI — rules +/− points (confidence = Forebet prob + jumla ya rules):
-       odds-band · H2H · form · ukubwa (nafasi) · home/away · motisha ya mchezo ·
-       ligi kuu · PS↔avg coherence · PS inamuunga favorite? · margin ya PS · Kelly value
-  3. MASOKO (football): 1X2 · Double Chance (1X/12/X2) · Draw No Bet ·
-       Total Goals (Over 0.5/1.5/2.5/3.5 · Under 2.5/3.5/4.5) · BTTS · Handicap Ulaya +1/+2
-     Basketball / Tennis: WINNER pekee.
-  4. SIKU (adaptive): lengo 3–10 picks; min 80→75→70 ikihitajika; top-10 ikiwa nyingi.
+  0. BLOCK: live/finished, friendlies, youth/women/reserves, doubles/ITF-low,
+     esports/virtual and other volatile competitions.
+  1. PROBABILITIES: football 1X2/DC/DNB + fitted Poisson total/team goals/BTTS;
+     basketball and tennis use winner and sport-specific normal-distribution markets.
+  2. EVIDENCE: team scoring averages, recent form, standings, H2H, predicted score,
+     home advantage and available bookmaker probabilities; adverse signals subtract confidence.
+  3. SELECTION: best eligible market per match, diversity caps, up to 10 picks;
+     thresholds normally 80→75→70 to seek at least three, without fabricating a bet.
+  4. SAFETY: only exact live bookmaker odds can make a model suggestion bettable;
+     final worker verification is required before a slip is built.
 """
 import math
 import re
@@ -23,7 +21,7 @@ from pathlib import Path
 MIN_CONF = 80                 # mwisho wa chini wa confidence (adaptive-relaxation hapa chini)
 TARGET_MIN, TARGET_MAX = 3, 10
 RELAX_STEPS = [80, 75, 70]
-CAPS = {"1X2": 3, "Double Chance": 3, "Total Goals": 3, "Winner": 3,
+CAPS = {"1X2": 3, "Double Chance": 3, "Total Goals": 10, "Team Goals": 10, "Winner": 3,
         "Draw No Bet": 2, "BTTS": 2, "Handicap +2": 2,
         "Handicap": 3, "Total Points": 3, "Games Handicap": 3, "Total Games": 3}   # diversity caps per day
 GATE_PROB = 50                # winner/DC/DNB/EH inahitaji favorite ≥ 50%; totals hazihitaji
@@ -560,9 +558,40 @@ def model_markets(rec, sport):
             out[("Draw No Bet", "1")] = f1 / (f1 + f2)
             out[("Draw No Bet", "2")] = f2 / (f1 + f2)
         avg = rec.get("avg")
-        if not (isinstance(avg, (int, float)) and avg > 0.3):          # F3
-            return out, {"note": "avg haipo → goal markets OFF (F3)"}
+        avg_source = "forebet_avg"
+        # Forebet's projected score is a valid same-match fallback when goalsavg
+        # is missing. Previously this returned early and removed every goals market.
+        if not (isinstance(avg, (int, float)) and math.isfinite(float(avg)) and avg > 0.3):
+            ps = rec.get("ps")
+            if isinstance(ps, (list, tuple)) and len(ps) >= 2 and all(
+                    isinstance(x, (int, float)) and math.isfinite(float(x)) and x >= 0 for x in ps[:2]):
+                avg = float(ps[0]) + float(ps[1])
+                avg_source = "predicted_score"
+            else:
+                ah, aa = rec.get("avg_h"), rec.get("avg_a")
+                if (isinstance(ah, (int, float)) and isinstance(aa, (int, float))
+                        and math.isfinite(float(ah)) and math.isfinite(float(aa))
+                        and ah >= 0 and aa >= 0):
+                    avg = float(ah) + float(aa)
+                    avg_source = "team_scoring_averages"
+        if not (isinstance(avg, (int, float)) and 0.3 < float(avg) <= 8.0):  # F3
+            return out, {"note": "avg/score haipo → goal markets OFF (F3)"}
         lh, la, ferr = fit_lambdas_v2(p1 or 0, px or 0, p2 or 0, float(avg))
+        # Rebalance goal expectation gently using actual team scoring rates,
+        # recent form and home advantage; keep the Forebet total and 1X2 fit.
+        share = lh / max(1e-9, lh + la)
+        ah, aa = rec.get("avg_h"), rec.get("avg_a")
+        if (isinstance(ah, (int, float)) and isinstance(aa, (int, float))
+                and math.isfinite(float(ah)) and math.isfinite(float(aa)) and ah + aa > 0):
+            team_share = float(ah) / (float(ah) + float(aa))
+            share = 0.80 * share + 0.20 * team_share
+        fh, nh = _form_score(rec.get("hf"))
+        fa, na = _form_score(rec.get("af"))
+        if nh >= 3 and na >= 3:
+            share += max(-0.05, min(0.05, (fh / nh - fa / na) * 0.012))
+        share += 0.02  # small home-field expectation, not an outcome guarantee
+        share = max(0.10, min(0.90, share))
+        lh, la = float(avg) * share, float(avg) * (1.0 - share)
         LH = [_pois_v(i, lh) for i in range(11)]
         LA = [_pois_v(j, la) for j in range(11)]
         over = {L: 0.0 for L in (0.5, 1.5, 2.5, 3.5, 4.5)}
@@ -586,10 +615,17 @@ def model_markets(rec, sport):
             out[("Total Goals", f"Under {L}")] = 1 - ov
         out[("BTTS", "Yes")] = btts
         out[("BTTS", "No")] = 1 - btts
+        # Individual team goal markets give the engine a second route when
+        # 1X2/DC is uncertain. The actual bookmaker verifier remains the final gate.
+        for side_name, team_lam in (("Home", lh), ("Away", la)):
+            for line in (0.5, 1.5):
+                over_team = 1.0 - sum(_pois_v(i, team_lam) for i in range(int(line) + 1))
+                out[("Team Goals", f"{side_name} Over {line}")] = over_team
+                out[("Team Goals", f"{side_name} Under {line}")] = 1.0 - over_team
         out[("Handicap +2", "+2 Home")] = eh2h
         out[("Handicap +2", "+2 Away")] = eh2a
         return out, {"lambda_home": round(lh, 2), "lambda_away": round(la, 2),
-                     "fit_err": round(ferr, 4)}
+                     "fit_err": round(ferr, 4), "avg_source": avg_source}
     if sport == "basketball":
         p1, _px, p2 = _probs(rec)
         if p1 is None or p2 is None or (p1 + p2) <= 0:
@@ -663,17 +699,64 @@ def _tip_is_away(tip):
     return tip in ("2", "X2", "Away Win", "P2") or tip.startswith(("Away +", "Away -", "P2 +", "P2 -"))
 
 
+def _selected_team_side(market, tip):
+    t = str(tip or "")
+    if market in ("1X2", "Draw No Bet"):
+        return "home" if t in ("1", "1X") else ("away" if t in ("2", "X2") else None)
+    if market == "Double Chance":
+        return "home" if t == "1X" else ("away" if t == "X2" else None)
+    if market == "Winner":
+        return "home" if t in ("P1", "1") else ("away" if t in ("P2", "2") else None)
+    if market == "Team Goals":
+        return "home" if t.startswith("Home ") else ("away" if t.startswith("Away ") else None)
+    return None
+
+
+def _evidence_flags(rec, side):
+    if side not in ("home", "away"):
+        return []
+    flags = []
+    own_form = rec.get("hf" if side == "home" else "af") or []
+    opp_form = rec.get("af" if side == "home" else "hf") or []
+    own_pts, own_n = _form_score(own_form)
+    opp_pts, opp_n = _form_score(opp_form)
+    if own_n >= 3 and opp_n >= 3 and own_pts <= opp_pts - 4:
+        flags.append("form_against")
+    pos_key, opp_key = (("hp", "ap") if side == "home" else ("ap", "hp"))
+    own_pos, opp_pos = _pos_int(rec.get(pos_key)), _pos_int(rec.get(opp_key))
+    if own_pos and opp_pos and own_pos >= opp_pos + 5:
+        flags.append("rank_against")
+    m = re.search(r"(\d+)\s*meetings?:.*?(\d+)W\s*-\s*(\d+)D\s*-\s*(\d+)L",
+                  rec.get("h2h") or "")
+    if m:
+        total, home_w, _draws, home_l = (int(m.group(i)) for i in range(1, 5))
+        side_losses = home_l if side == "home" else home_w
+        if total >= 3 and side_losses / total >= 0.40:
+            flags.append("h2h_against")
+    return flags
+
+
 def _flags_for_tip(rec, sport, market, tip, p_model, p_market, fit_info):
-    flags = list(_flags_base(rec, sport))
+    side = _selected_team_side(market, tip)
+    flags = _evidence_flags(rec, side)
+    # Result-form/H2H flags must not be copied onto totals/BTTS: those markets
+    # describe scoring, not which side wins.
     if p_market is not None and abs(p_model - p_market) > 0.06:
         flags.append("model_vs_market")                                # G4
-    if fit_info and fit_info.get("fit_err", 0) > 0.05 and market in ("Total Goals", "BTTS"):
+    if fit_info and fit_info.get("fit_err", 0) > 0.05 and market in ("Total Goals", "Team Goals", "BTTS", "Handicap +2"):
         flags.append("model_fit_poor")                                 # F2
     ps = rec.get("ps")
     if ps and None not in ps and market in ("1X2", "Double Chance", "Draw No Bet"):
-        if _tip_is_away(tip) and ps[0] > ps[1]:
+        if side == "away" and ps[0] > ps[1]:
             flags.append("ps_contradicts")
-        elif tip in ("1", "1X", "DNB 1") and ps[1] > ps[0]:
+        elif side == "home" and ps[1] > ps[0]:
+            flags.append("ps_contradicts")
+    elif ps and None not in ps and market == "Team Goals" and side:
+        team_score = ps[0] if side == "home" else ps[1]
+        line_match = re.search(r"(\d+(?:\.\d+)?)", str(tip))
+        line = float(line_match.group(1)) if line_match else 0.5
+        if (str(tip).find("Over") >= 0 and team_score <= line) or (
+                str(tip).find("Under") >= 0 and team_score > line):
             flags.append("ps_contradicts")
     if sport == "football" and _tip_is_away(tip):
         flags.append("favourite_away")
@@ -722,7 +805,7 @@ def best_tip_for_match(rec, sport, bk=None, min_prob=0.75, log=print):
     bk_probs = bk.get("probs") or {}
     bk_odds = bk.get("odds") or {}
     w = float(_cg2("W_MODEL", W_MODEL_DEF))
-    lo_o = float(_cg2("LEG_ODDS_MIN", 1.05))
+    lo_o = float(_cg2("LEG_ODDS_MIN", 1.01))
     hi_o = float(_cg2("LEG_ODDS_MAX", 3.50))
 
     # RULES B4/T7 + tennis T5 lopsided veto: favourite ≥85% → angua Over games zote
@@ -736,15 +819,17 @@ def best_tip_for_match(rec, sport, bk=None, min_prob=0.75, log=print):
             continue                                                       # T5
         bkp = bk_probs.get((market, tip))
         bko = bk_odds.get((market, tip))
-        if bk_found is True and (bkp is None or bko is None):
-            continue                                                       # G6: not bettable
+        # Bookmaker data is an optional evidence source, not a generation gate.
+        # A missing exact market stays model-only and is checked against live
+        # bookie markets by worker.verify_pick before it can enter a slip.
         p_final = (w * p_model + (1 - w) * bkp) if bkp is not None else p_model
         flags = _flags_for_tip(rec, sport, market, tip, p_model, bkp,
                                fit_info if fit_info else None)
         if bk.get("disagree"):
             flags.append("bookies_disagree")
         pen = min(len(flags) * FLAG_PEN, FLAG_PEN_MAX)                    # G4
-        p_cal = max(0.0, min(1.0, calibrate(p_final) - pen))              # G3
+        # No uncalibrated statistical estimate is presented as >95% certainty.
+        p_cal = max(0.0, min(0.95, calibrate(p_final) - pen))            # G3
         ev = (p_cal * float(bko) - 1.0) if bko else None
         cands.append({"market": market, "tip": tip,
                       "p_model": round(p_model, 4),
@@ -756,16 +841,23 @@ def best_tip_for_match(rec, sport, bk=None, min_prob=0.75, log=print):
     # G5: filters (odds ni mipaka — si scoring)
     ok, rej = [], []
     for c in cands:
-        eff = c["bk_odds"] if c["bk_odds"] else (1.0 / c["p_cal"] if c["p_cal"] > 0 else 999)
-        floor = lo_o if c["bk_odds"] else max(lo_o, 1.15)
-        if eff < floor:
-            rej.append((c, f"odds {eff:.2f} < {'LEG_ODDS_MIN' if c['bk_odds'] else 'offline-floor 1.15'}"))
-        elif c["bk_odds"] and c["bk_odds"] > hi_o:
+        # Never reject a high-confidence model-only pick using inverse
+        # probability as if it were a bookmaker price. Only real odds are gated.
+        if c["bk_odds"] is not None and c["bk_odds"] < lo_o:
+            rej.append((c, f"odds {c['bk_odds']:.2f} < LEG_ODDS_MIN"))
+        elif c["bk_odds"] is not None and c["bk_odds"] > hi_o:
             rej.append((c, f"odds {c['bk_odds']:.2f} > LEG_ODDS_MAX"))
         elif c["p_cal"] < min_prob:
             rej.append((c, f"p {c['p_cal']:.0%} < MIN_LEG_PROB"))
         else:
             ok.append(c)
+
+    # When the provider confirms an event and has at least one supported,
+    # priced market, choose among those bettable candidates first. This keeps
+    # model-only experimental markets from displacing a verified market.
+    priced = [c for c in ok if c["bk_odds"] is not None]
+    if bk_found is True and priced:
+        ok = priced
 
     if not ok:                                                            # G8
         if rej:
@@ -787,8 +879,8 @@ def best_tip_for_match(rec, sport, bk=None, min_prob=0.75, log=print):
     why = [f"model={best['p_model']:.0%} · market="
            + (f"{best['p_market']:.0%}" if best["p_market"] is not None else "—(model_only)")
            + f" → p_cal={best['p_cal']:.0%}"]
-    if bk_found is None or bk_found is not True:
-        why.append("⚠ bookie data haipatikana — model_only")
+    if bk_found is not True or best["bk_odds"] is None:
+        why.append("⚠ exact bookmaker market/odds haipo — model_only; hakikisha kabla ya bet")
     for f in best["flags"]:
         why.append(f"⚑ {f} (−{FLAG_PEN:.0%})")
     if alts:
@@ -823,10 +915,12 @@ def best_tip_for_match(rec, sport, bk=None, min_prob=0.75, log=print):
 def predict_day(records_by_sport, provider=None, min_conf=None, log=print):
     """G7+u-chaguzi wa siku: pool → CAPS → front (3–10)."""
     min_conf = int(min_conf if min_conf is not None else 80)
-    steps = [min_conf / 100.0] + [s / 100.0 for s in RELAX_STEPS[1:]]
+    steps_pct = [min_conf] + [s for s in RELAX_STEPS if s < min_conf]
+    steps = [s / 100.0 for s in dict.fromkeys(steps_pct)]
     chosen = steps[0]
     pool = []
     for min_p in steps:
+        chosen = min_p
         pool = []
         for sport, recs in records_by_sport.items():
             for rec in recs:

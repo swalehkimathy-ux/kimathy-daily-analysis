@@ -12,12 +12,12 @@ echo.
 echo  === K96 PICKS - FULL DESKTOP BUILD =======================
 echo.
 
-rem -- 0. .env.local: lazima iwe KARIBU na K96_PICKS.exe baada ya install -----
+rem -- 0. .env.local haifungwi ndani ya installer; weka resources\backend baada ya install.
 if exist ".env.local" goto ENV_OK
-echo   [0/5] ONYO: .env.local haipo hapa - iweke karibu na K96_PICKS.exe baada ya install.
+echo   [0/5] .env.local haipo hapa; baada ya install, tengeneza resources\backend\.env.local.
 goto ENV_DONE
 :ENV_OK
-echo   [0/5] .env.local ipo - inahitajika karibu na K96_PICKS.exe baada ya install.
+echo   [0/5] .env.local ipo locally; builder haitai-copy. Weka copy resources\backend baada ya install.
 :ENV_DONE
 
 rem -- 1. Node.js ---------------------------------------------------
@@ -52,7 +52,7 @@ popd
 echo.
 echo  ============================================================
 echo   IMEMALIZIKA!  Installer yako iko hapa:
-echo     %CD%\dist_electron\K96 PICKS Setup 2.8.0.exe
+echo     %CD%\dist_electron\K96 PICKS Setup 2.8.4.exe
 echo.
 echo   Install -> Start menu + Desktop "K96 PICKS" ni icon yako.
 echo  ============================================================

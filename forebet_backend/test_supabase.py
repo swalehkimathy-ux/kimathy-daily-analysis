@@ -51,9 +51,14 @@ def chk(n, cond, msg):
 st, hd, _ = req("GET", "/rest/v1/picks?limit=1", SRV)
 chk(2, st == 200, f"service GET picks → HTTP {st}")
 
-# 3. anon: rest GET (read)
+# 3. anon: data binafsi isionekane (RLS inaweza kujibu 200 + [] au 401/403)
 st, hd, date_hdr = req("GET", "/rest/v1/picks?limit=1", ANON)
-chk(3, st == 200, f"anon GET picks → HTTP {st} (kusoma kunaruhusiwa)")
+try:
+    anon_rows = json.loads(date_hdr.decode("utf-8")) if date_hdr else []
+except Exception:
+    anon_rows = None
+chk(3, st in (200, 401, 403) and (st != 200 or anon_rows == []),
+    f"anon GET picks → HTTP {st}, rows={len(anon_rows) if isinstance(anon_rows, list) else 'denied'} (hakuna data binafsi)")
 
 # 4. anon: write lazima IKATALIWE
 st, _, _ = req("POST", "/rest/v1/picks", ANON, {"day": "1999-01-01", "home": "A", "away": "B",
@@ -61,7 +66,7 @@ st, _, _ = req("POST", "/rest/v1/picks", ANON, {"day": "1999-01-01", "home": "A"
 chk(4, st in (401, 403), f"anon POST picks → HTTP {st} (lazima 401/403)")
 
 # 5. zinahitajika tables/views zi-halisi
-need = ["day_cache", "matches", "picks", "engine_stats"]
+need = ["day_cache", "matches", "picks", "engine_stats", "analysis_runs", "calibration_samples"]
 newo = ["odds_snapshots", "slips", "slip_legs", "calibration"]
 miss, ng = [], []
 for t in need + newo:
@@ -88,10 +93,16 @@ marker = {"day": "1999-01-01", "sport": "football", "home": "TEST_HOME_K96",
           "rank": 1, "why": []}
 stB, _, eB = req("POST", "/rest/v1/picks", SRV, marker)
 if stA in (200, 201, 204, 409) and stB in (200, 201, 204, 409):
+    stV, _, bodyV = req("GET", "/rest/v1/picks?day=eq.1999-01-01&home=eq.TEST_HOME_K96&select=id", ANON)
+    try:
+        anon_marker_rows = json.loads(bodyV.decode("utf-8")) if bodyV else []
+    except Exception:
+        anon_marker_rows = None
+    private_ok = stV in (401, 403) or (stV == 200 and anon_marker_rows == [])
     stC, _, _ = req("DELETE", "/rest/v1/picks?day=eq.1999-01-01", SRV)
     stD, _, _ = req("DELETE", "/rest/v1/day_cache?day=eq.1999-01-01", SRV)
-    chk(6, stC in (200, 204) and stD in (200, 204),
-        f"round trip → {stA}/{stB} → delete {stC}/{stD}")
+    chk(6, stC in (200, 204) and stD in (200, 204) and private_ok,
+        f"round trip → {stA}/{stB}, anon isolation HTTP {stV}, cleanup {stC}/{stD}")
 else:
     chk(6, False, f"insert test-row → cache {stA}, picks {stB}: {eB[:120]!r}")
 

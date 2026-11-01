@@ -678,7 +678,7 @@ async function runScrape(){
   if (!j || j.rc){
     log("✗ Scrape IMESHINDWA (rc=" + (j ? j.rc : "timeout") + ") — angalia Activity Log.");
     $("#picks_host").innerHTML = `<div class="empty" style="border-color:var(--red);color:var(--red)">
-      ✗ Scraper haikupata mechi — Forebet haikufikiwa.<br>
+      ✗ Scraper haikuweza kuthibitisha data zote katika Supabase/Forebet.<br>
       <span style="color:var(--mut)">Fungua <b>Activity Log</b> uone sababu na suluhisho. Usibonyeze Run Engine bado.</span></div>`;
     refreshStatus(); return;
   }
@@ -750,7 +750,7 @@ async function refreshStatus(){
   const db = $("#daysBox"), sb = $("#statsBox");
   if (!s.ok){ db.innerHTML = `<span class="empty">${esc(s.error||"?")}</span>`; sb.innerHTML=""; return; }
   db.innerHTML = s.days.length
-      ? s.days.map(d=>`<div class="statRow"><span>📅 ${esc(d.day)}</span><span><b>${d.match_count}</b> fixtures · ${esc((d.scraped_at||"").slice(11,16))}</span></div>`).join("")
+      ? s.days.map(d=>`<div class="statRow"><span>📅 ${esc(d.day)} <span class="pill">${esc(d.scrape_status||"legacy")}</span></span><span><b>${d.match_count}</b> DB fixtures · ${esc((d.scraped_at||"").slice(11,16))}</span></div>`).join("")
       : `<span class="empty">No cached days yet.</span>`;
   sb.innerHTML = s.stats.length
       ? s.stats.map(t=>`<div class="statRow"><span>${esc(t.market)} <span style="color:var(--mut)">(${esc(t.sport)})</span></span>

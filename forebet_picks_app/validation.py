@@ -72,8 +72,11 @@ def validate_record(rec: dict, sport: str = "football") -> tuple[bool, list[str]
     ps = rec.get("ps")
     if ps is not None:
         try:
+            # Predicted-score scale differs by sport: football goals are small,
+            # while basketball forecasts routinely exceed 100 points.
+            ps_max = {"football": 15, "basketball": 300, "tennis": 60}.get(sport, 300)
             if isinstance(ps, (list, tuple)):
-                if any(x is None or not isinstance(x, int) or not 0 <= x <= 15 for x in ps):
+                if any(x is None or not isinstance(x, int) or not 0 <= x <= ps_max for x in ps):
                     probs.append("ps_mbaya")
             else:
                 probs.append("ps_si_pair")

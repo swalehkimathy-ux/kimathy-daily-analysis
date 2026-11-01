@@ -9,8 +9,8 @@ SMART ENGINE v1.0 — Forebet supplies forecasts/data; this module creates and r
      basketball and tennis use winner and sport-specific normal-distribution markets.
   2. EVIDENCE: team scoring averages, recent form, standings, H2H, predicted score,
      home advantage and available bookmaker probabilities; adverse signals subtract confidence.
-  3. SELECTION: best eligible market per match, diversity caps, up to 10 picks;
-     thresholds normally 80→75→70 to seek at least three, without fabricating a bet.
+  3. SELECTION: best market per match, balanced across available sports, up to 10 picks;
+     confidence threshold relaxes only when there are no eligible candidates at its current level.
   4. SAFETY: only exact live bookmaker odds can make a model suggestion bettable;
      final worker verification is required before a slip is built.
 """
@@ -19,11 +19,31 @@ import re
 from pathlib import Path
 
 MIN_CONF = 80                 # mwisho wa chini wa confidence (adaptive-relaxation hapa chini)
-TARGET_MIN, TARGET_MAX = 3, 10
+TARGET_MIN, TARGET_MAX = 1, 10
 RELAX_STEPS = [80, 75, 70]
-CAPS = {"1X2": 3, "Double Chance": 3, "Total Goals": 10, "Team Goals": 10, "Winner": 3,
-        "Draw No Bet": 2, "BTTS": 2, "Handicap +2": 2,
-        "Handicap": 3, "Total Points": 3, "Games Handicap": 3, "Total Games": 3}   # diversity caps per day
+# Avoid small per-market caps; prioritize balanced representation across sports.
+CAPS = {market: TARGET_MAX for market in (
+    "1X2", "Double Chance", "Total Goals", "Team Goals", "Winner", "Draw No Bet",
+    "BTTS", "Handicap +2", "Handicap", "Total Points", "Games Handicap", "Total Games",
+)}
+
+
+def _balanced_front(pool):
+    """Choose top candidates without letting football-first order starve other sports."""
+    sports = list(dict.fromkeys(p.get("sport") or "unknown" for p in pool))
+    if not sports:
+        return []
+    quota = max(1, math.ceil(TARGET_MAX / len(sports)))
+    counts, front = {}, []
+    for pick in pool:
+        sport = pick.get("sport") or "unknown"
+        if counts.get(sport, 0) >= quota:
+            continue
+        front.append(pick)
+        counts[sport] = counts.get(sport, 0) + 1
+        if len(front) >= TARGET_MAX:
+            break
+    return front
 GATE_PROB = 50                # winner/DC/DNB/EH inahitaji favorite ≥ 50%; totals hazihitaji
 
 # ---------------------------------------------------------------------------
@@ -359,10 +379,10 @@ def analyze_match(rec, sport, min_conf):
 
 
 # ---------------------------------------------------------------------------
-# 5. SIKU nzima — adaptive (lengo 3–10)
+# 5. SIKU nzima — idadi flexible; hakuna lengo la lazima, max 10
 # ---------------------------------------------------------------------------
 def analyze_day_full(records_by_sport, log=print):
-    """Rudi (picks ya diversity-caps, chosen_min, POOL yote yenye candidates ≥ chosen_min).
+    """Rudi (front iliyosawazishwa kwa sport, chosen_min, pool ya candidates).
     POOL hutumika na worker kwa 'auto-replace': bookie ikikata → candidate inayofuata inaingia."""
     pool = []
     skipped = []
@@ -388,20 +408,7 @@ def analyze_day_full(records_by_sport, log=print):
 
     pool.sort(key=lambda p: (-p["conf"], -p["forebet"]))
 
-    front, used = [], {}
-    for p in pool:
-        cap = CAPS.get(p["market"], 3)
-        if used.get(p["market"], 0) < cap:
-            front.append(p)
-            used[p["market"]] = used.get(p["market"], 0) + 1
-        if len(front) >= TARGET_MAX:
-            break
-    if len(front) < TARGET_MIN:
-        for p in pool:
-            if p not in front:
-                front.append(p)
-            if len(front) >= TARGET_MIN:
-                break
+    front = _balanced_front(pool)
 
     for i, p in enumerate(front, 1):
         p["rank"] = i
@@ -913,7 +920,7 @@ def best_tip_for_match(rec, sport, bk=None, min_prob=0.75, log=print):
 
 
 def predict_day(records_by_sport, provider=None, min_conf=None, log=print):
-    """G7+u-chaguzi wa siku: pool → CAPS → front (3–10)."""
+    """Rank available candidates into a sport-balanced front (0–10)."""
     min_conf = int(min_conf if min_conf is not None else 80)
     steps_pct = [min_conf] + [s for s in RELAX_STEPS if s < min_conf]
     steps = [s / 100.0 for s in dict.fromkeys(steps_pct)]
@@ -937,20 +944,7 @@ def predict_day(records_by_sport, provider=None, min_conf=None, log=print):
         if len(pool) >= TARGET_MIN:
             chosen = min_p
             break
-    front, used = [], {}
-    for p in pool:
-        cap = CAPS.get(p["market"], 3)
-        if used.get(p["market"], 0) < cap:
-            front.append(p)
-            used[p["market"]] = used.get(p["market"], 0) + 1
-        if len(front) >= TARGET_MAX:
-            break
-    if len(front) < TARGET_MIN:
-        for p in pool:
-            if p not in front:
-                front.append(p)
-            if len(front) >= TARGET_MIN:
-                break
+    front = _balanced_front(pool)
     for i, p in enumerate(front, 1):
         p["rank"] = i
         if chosen < (min_conf / 100.0):

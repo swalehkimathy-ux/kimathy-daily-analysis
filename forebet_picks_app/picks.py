@@ -5,7 +5,7 @@ FOREBET PICKS — msingi (Forebet = chanzo cha data PEKEE).
 Scraper: mechi ZOTE za siku (football / basketball / tennis).
 SMART ENGINE (engine.py): uhakiki wa kujitegemea + uteuzi wa soko lenye confidence
   (football: 1X2 / Double Chance / Total Goals / Handicap+2 · basketball/tennis: Winner pekee)
-  · ligi/timu za watoto na wanawake zinaondolewa · odds ni mipaka ya config tu · lengo 3–10 picks/siku.
+  · ligi/timu za watoto na wanawake zinaondolewa · odds ni mipaka ya config tu · picks 0–10, sports-balanced.
 Output: Excel + @PICKS JSON + copy text. HAKUNA gate ya ziada / betslip / betpawa.
 """
 import datetime as _dt
@@ -97,7 +97,7 @@ def run(day: str, min_prob: int = 80, do_enrich: bool = True, log=print, records
         p["why"] = p.get("why") or []
         p["reason"] = p.get("decision", "")
         picks.append(p)
-    log(f"  [{engine.ENGINE_TAG}] picks za mwisho: {len(picks)} (lengo 3–10, pool reserve: {len(pool)})")
+    log(f"  [{engine.ENGINE_TAG}] picks za mwisho: {len(picks)} (no fixed count; max 10, sports-balanced, reserve={len(pool)})")
 
     xlsx = _excel(day, picks, used_min, log)
     payload = {"day": day, "min_prob": used_min, "engine": engine.ENGINE_TAG,

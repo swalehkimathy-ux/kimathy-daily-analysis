@@ -101,9 +101,9 @@ btN = engine.best_tip_for_match(bal, "football", None, 0.99, lambda s: None)
 assert btN is None, "min 99%: hakuna candidate → None (hakuna kuponda mipaka)"
 # predict_day wrapper bado inafanya kazi
 front, pool, mn = engine.predict_day({"football": [liv]}, None, 80, lambda s: None)
-assert len(front) == 1 and abs(mn - 0.70) < 1e-9  # final attempted threshold is reported
+assert len(front) == 1 and abs(mn - 0.80) < 1e-9  # do not lower merely to force three picks
 fr2, mn2 = engine.analyze_day({"football": [liv]}, lambda s: None)
-assert len(fr2) == 1 and mn2 == 70
+assert len(fr2) == 1 and mn2 == 80
 
 # ── 11. Score fallback + individual team totals + high p model-only survives ─
 score_only = mk([34, 30, 36], None, "AFC", "Rovers", "EPL", ps=[1, 1], avg=None)
@@ -126,5 +126,18 @@ fixtures = [mk([33, 34, 33], None, f"Home{i}", f"Away{i}", f"League {i}",
                ps=[2, 1], avg=3.0) for i in range(12)]
 front_many, pool_many, chosen_many = engine.predict_day({"football": fixtures}, None, 80, lambda s: None)
 assert len(front_many) == 10 and sum(p["market"] == "Total Goals" for p in front_many) == 10, front_many
+# With three sports present, football-first input order must not monopolize the front.
+balanced_records = {
+    "football": fixtures[:8],
+    "basketball": [mk([84, None, 16], None, f"BHome{i}", f"BAway{i}", "NBA",
+                       avg=220, sport="basketball") for i in range(8)],
+    "tennis": [mk([91, None, 9], None, f"THome{i}", f"TAway{i}", "ATP 500",
+                   avg=21, sport="tennis") for i in range(8)],
+}
+front_bal, _pool_bal, _chosen_bal = engine.predict_day(balanced_records, None, 80, lambda s: None)
+from collections import Counter
+sport_counts = Counter(p["sport"] for p in front_bal)
+assert len(front_bal) == 10 and set(sport_counts) == set(balanced_records), sport_counts
+assert max(sport_counts.values()) <= 4, sport_counts
 
 print("✓ engine v1.0 (rules + fallback/team goals): ALL GREEN (11 groups)")

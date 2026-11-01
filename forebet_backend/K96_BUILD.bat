@@ -52,7 +52,7 @@ popd
 echo.
 echo  ============================================================
 echo   IMEMALIZIKA!  Installer yako iko hapa:
-echo     %CD%\dist_electron\K96 PICKS Setup 2.8.4.exe
+echo     %CD%\dist_electron\K96 PICKS Setup 2.8.6.exe
 echo.
 echo   Install -> Start menu + Desktop "K96 PICKS" ni icon yako.
 echo  ============================================================

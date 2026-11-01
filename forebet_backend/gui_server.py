@@ -45,7 +45,7 @@ def res_path(name):
     return BACKEND / name
 
 HOST, PORT = "127.0.0.1", 8777
-APP_VERSION = "2.8.4"
+APP_VERSION = "2.8.6"
 _EAT = _dt.timezone(_dt.timedelta(hours=3))
 
 

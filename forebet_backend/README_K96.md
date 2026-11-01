@@ -1,10 +1,10 @@
-# 🟢 K96 PICKS — Smart Pick Engine (v2.8.4 / smart-engine v1.0)
+# 🟢 K96 PICKS — Smart Pick Engine (v2.8.6 / smart-engine v1.0)
 
-**K96 PICKS** ni desktop programu ya uchambuzi wa kubeti: Forebet (probabilities) × Betway/betPawa (soko halisi) → **smart-engine v0.3** → Slips salama (odds target yako).
+**K96 PICKS** ni desktop programu ya uchambuzi wa kubeti: Forebet forecasts × Betway/betPawa real odds → Smart Engine → verified picks and slips.
 
 - 🏦 **Bookmaker verification**: tip lazima i-EXIST kwenye Betway TZ au betPawa TZ — kublinga kwenye site = HAIONYESHWI kabisa
 - 🧠 **Probability halisi**: `0.5 × model (Poisson fit)` + `0.5 × bookie devig` — kamwe HAKUKUJIWA confidence
-- 🎫 **Slip builder**: DP inachagua subset yenye joint-prob ya JUU per total-odds lengo (1.85–2.50 default)
+- 🎫 **Slip builder**: DP huchagua subset yenye joint-prob ya juu ndani ya target ya total odds 1.50–2.50
 - 📊 **Ukweli juu yake**: Phase 6 → backtest + calibration live kwenye Analytics tab
 
 ---
@@ -12,7 +12,7 @@
 ## 🚀 HATUA ZA KWANZA (PC mpya, ~10 min)
 
 0. **Ondoa K96 ya zamani**: Settings → Apps → "K96 PICKS" → Uninstall (kama uliwahi kusakinisha installer ya zamani), na futa folda za zamani.
-1. **Unzip** `K96_PICKS_PC_v2.8.4.zip` popote (mf. `C:\K96`).
+1. **Tumia source iliyosasishwa** kwenye branch hii, au jenga installer mpya kwa `K96_BUILD.bat` (installer haijatengenezwa kwenye mabadiliko haya).
 2. Kwa source zip, tengeneza `forebet_backend/.env.local` kwa kunakili `.env.example`, kisha jaza URL na keys kwenye PC yako tu. Kwa Electron installer, weka faili hiyo ndani ya `resources/backend/`. Usiiweke GitHub, zip au chat.
 3. **Supabase SQL Editor** (mara moja tu, kama bado): endesha kwa mpangilio `schema.sql` → `schema_v2.sql` → `schema_v3_security.sql` → `schema_v4_reliability.sql`.
 4. **Sakinisha**: double-click `forebet_backend\INSTALL_K96.bat` (pip deps + Playwright Chromium).
@@ -28,11 +28,18 @@
 | 2 | **🔍 2) Run Engine (picks/slips)** | Inasoma data za hatua 1 (bila kuscrape tena) → H2H kwa wateule ≤40 tu (~3 dk) → engine v1.0 → uhakiki wa bookie → **Picks + Slips**. |
 | 3 | **🏁 Results** tab | Matokeo ya siku iliyochaguliwa (default: jana) — win/loss/push + hit rate. |
 
-> UI hutambua tarehe mpya ya EAT kila dakika, lakini kubadilika kwa tarehe **hakuanzi scrape/engine yenyewe**. Bonyeza Run Scraper, au endesha daemon kwa PC iliyo online.
+> UI hutambua tarehe mpya ya EAT kila dakika, lakini kubadilika kwa tarehe **hakuanzi scrape/engine yenyewe**. Scraper na Engine zinaanzishwa kwa mikono kupitia vitufe vya desktop; hakuna scheduler inayohitajika.
 > Scraper ikipata mechi **0**, au Supabase verification ikishindwa, GUI inaonyesha kosa kwenye Activity Log — **usibonyeze Run Engine** hadi scrape ithibitishwe.
 > CLI: `python worker.py scrape --date 2026-10-31` · `python worker.py run --date 2026-10-31`
 
-> ⏰ **Daemon (auto):** `python worker.py daemon` — PC ikikuwa online 24/7: picks za 00:00, settle 01:00, odds-refresh 06:00/12:00, calibration Jumatatu 04:00.
+## 🖥️ Workflow ya manual (hakuna automation)
+
+1. Mara ya kwanza tu, tengeneza `forebet_backend/.env.local` kutoka `.env.example` na ujaze credentials zako locally.
+2. Kila siku, chagua tarehe kwenye UI → bonyeza **Run Scraper** na subiri Supabase verification ifanikiwe.
+3. Kisha bonyeza **Run Engine** kwa tarehe hiyo; Engine hutumia data iliyohifadhiwa na kuunda picks/slips kutoka odds halisi zilizothibitishwa.
+4. CLI mbadala: `python worker.py scrape --date YYYY-MM-DD` kisha `python worker.py run --date YYYY-MM-DD`.
+
+Hakuna GitHub schedule au custom Android APK iliyojumuishwa. `.env.local` haipo kwenye ZIP kwa usalama; tengeneza locally kutoka `.env.example`. GitHub Android app haihitajiki kwa workflow hii.
 
 ## 🎫 Slips (jicho kuu)
 
@@ -45,7 +52,7 @@
 ℹ **Kila leg inapunguza joint probability:** 10 legs @90% → joint ≈ **35%** tu. Kwa hiyo **SAFEST inapenda legs chache** — ndilo design salama.
 
 ## ⚙️ Settings ya slip (GUI → Settings → Slip builder)
-odds ya leg (1.05–3.50), slip target (1.85–2.50), MAX legs (12), FORCE N (au acha auto), min leg prob (0.75), friendly block.
+odds ya leg (1.01–3.50), slip target (1.50–2.50), MAX legs (12), FORCE N (au acha auto), min leg prob (0.75), friendly block.
 
 ## 🛡️ Usalama (CRITICAL)
 - `.env.local` HAIZIKI GitHub/zip/exe kamwe — tengeneza locally kutoka `.env.example`; `.gitignore` inailinda.
@@ -75,4 +82,4 @@ forebet_picks_app/
 - Backtest (historically) ni model-only bila devig (snapshot accumulation inaendelea)
 
 ## 📞 Version
-`v2.8.4 · reliability + history-safe runs (K96 ENGINE RULES) · 2026-11-01 · By Kimathy96`
+`v2.8.6 · manual workflow + balanced multi-sport engine · 2026-11-01 · By Kimathy96`

@@ -652,11 +652,18 @@ def cmd_run(day, min_prob, force, no_enrich):
 
         ok_picks, dropped, api_down = [], [], False
         caps = dict(_eng.CAPS)
+        eligible_sports = list(dict.fromkeys(c.get("sport") for c in ordered if c.get("sport")))
+        n_sports = max(1, len(eligible_sports))
+        sport_quota = max(1, (_eng.TARGET_MAX + n_sports - 1) // n_sports)
+        verified_by_sport = {}
         t_ver = time.time()
         print(f"   [BOOKIE] uthibitisho wa picks: wagombea {len(ordered)} (max dk {VERIFY_BUDGET_S // 60})")
         for cand in ordered:
             if len(ok_picks) >= _eng.TARGET_MAX:
                 break
+            sport = cand.get("sport") or "unknown"
+            if verified_by_sport.get(sport, 0) >= sport_quota:
+                continue
             if time.time() - t_ver > VERIFY_BUDGET_S:          # usikwame — kikomo cha muda
                 print(f"   ⚠ [BOOKIE] muda wa uthibitisho (dk {VERIFY_BUDGET_S // 60}) umeisha — nasimama na picks {len(ok_picks)}")
                 if not ok_picks:
@@ -677,6 +684,7 @@ def cmd_run(day, min_prob, force, no_enrich):
                 cand["bp_name"] = v.get("event_found") or v.get("bw_event")
                 cand["why"] = (cand.get("why") or []) + [v["note"]]
                 ok_picks.append(cand)
+                verified_by_sport[sport] = verified_by_sport.get(sport, 0) + 1
                 caps[cand["market"]] = caps.get(cand["market"], 3) - 1
             else:
                 dropped.append((cand, v["note"]))

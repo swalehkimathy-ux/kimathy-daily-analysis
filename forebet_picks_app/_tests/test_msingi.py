@@ -69,7 +69,7 @@ assert abs(dc_pm - 0.87) < 1e-9, f"spec 5.7: Liverpool DC 1X p_model = 0.87 → 
 assert liv["conf"] <= 95, f"confidence inaamini 95 zidi — umashara: {liv['conf']}"
 
 bay = by_home.get("Bayern")
-if bay:  # 92% favorite → bookie-less mode: sólo TG legs yenye fair-odds ≥1.15 hunusa;  <80% adaptive-ela phupu
+if bay:  # analysis candidates do not become bettable without real bookmaker verification
     assert 75 <= bay["conf"] <= 95, bay
 mc = by_home.get("Man City")
 # Hii fixture has projected score 2-1 + avg 3.4, so a goals-market tip is
@@ -82,9 +82,9 @@ assert "Real Madrid" not in db, "FRIENDLY lazima i-block kabisa (spec E6/5.6)!"
 assert len(payload["picks"]) <= 10
 swa = by_home.get("Swiatek"); assert swa and swa["sport"] == "tennis", "tennis tip"
 
-# injuries: DC baada ya diversity-cap hazijazia yote
+# If each sport has candidates, football cannot monopolize the daily front.
 from collections import Counter
-mkts = Counter(p["market"] for p in payload["picks"])
-assert mkts.get("Double Chance", 0) <= 3, mkts
+sport_counts = Counter(p["sport"] for p in payload["picks"])
+assert {"football", "basketball", "tennis"}.issubset(sport_counts), sport_counts
 
 print("\nALL ASSERTS GREEN ✓  (smart-engine v1.0 · spec §5 updated)")

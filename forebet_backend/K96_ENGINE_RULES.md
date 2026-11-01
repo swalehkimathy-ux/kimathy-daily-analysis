@@ -168,3 +168,15 @@ Add per-sport tests for: odds below `LEG_ODDS_MIN` rejected; `None` returned whe
 - No scraping, no real bookmakers, no database (see the implementation spec).
 - Brute-force slip search (fine for ~12 legs; production uses DP/beam search).
 - Constants (SDs, W_MODEL, thresholds) are starting values. **They must be tuned on settled history** (backtest + calibration, spec Section 8), never trusted blindly.
+
+## Runtime addendum — daily-coverage changes
+
+This section supersedes the candidate-generation parts of G5/G6 above where they conflict with the current `engine.py`:
+
+- Football goal markets can now use `goalsavg`; if absent, they fall back to the projected score total, then to the two teams' season scoring averages when both exist. They include match totals and each team's Over/Under 0.5 and 1.5 goals.
+- Fitted home/away goal expectations are gently rebalanced with the teams' scoring averages, recent form and a small home-field factor. Form, standings rank, H2H and projected score can add directional risk flags; they only reduce the selected candidate's confidence. H2H and form are not treated as proof.
+- Missing an exact bookmaker line no longer prevents the model from producing an analysis candidate. If exact bookmaker-priced candidates exist, the engine prefers those. Otherwise a model-only candidate may enter the pick pool, but the worker must still verify its market and live odds before it can enter a slip. The inverse of model probability is **not** treated as bookmaker odds.
+- Uncalibrated confidence is capped at 95%, rather than displayed as certainty. Adaptive thresholds actually attempted are reported accurately (normally 80%, then 75%, then 70% if needed to seek three picks).
+- Default slip odds target is now **1.50–1.80** (instead of the older 1.85–2.50 example), matching the requested lower-return, lower-leg-count target. It remains a target range, not a promise that a slip will exist; only bookmaker-verified odds can be used.
+
+These changes improve coverage; they do not guarantee a fixed number of valid bets, profitability, or match outcomes. If a market is not offered by the bookmaker, it remains an analysis-only candidate and must not be placed in a slip.

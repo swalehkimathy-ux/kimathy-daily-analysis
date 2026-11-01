@@ -229,6 +229,22 @@ def verify_pick_betway(pick, day_iso, log):
                         and "total goals" in _norm(m.get("name", ""))
                         and _norm(o.get("name", "")).startswith(side)
                         and (line is None or abs(float(o.get("handicap") or -999) - line) < 0.01))
+    elif market == "Team Goals":
+        mm = re.search(r"(\d+(?:\.\d+)?)", tip_s)
+        line = float(mm.group(1)) if mm else None
+        team_side = "home" if tip_s.startswith("Home ") else "away"
+        outcome_side = "over" if " Over " in f" {tip_s} " else "under"
+        team_name = home_l if team_side == "home" else away_l
+        def team_total_match(o, m):
+            if m.get("marketTypeCName") != "handicap-goals-over":
+                return False
+            market_name = _norm(m.get("name", ""))
+            named_side = (("home" in market_name or "host" in market_name or team_name in market_name)
+                          if team_side == "home" else
+                          ("away" in market_name or "guest" in market_name or team_name in market_name))
+            return (named_side and _norm(o.get("name", "")).startswith(outcome_side)
+                    and (line is None or abs(float(o.get("handicap") or m.get("handicap") or -999) - line) < 0.01))
+        r = _find_price(mig, outs, pmap, team_total_match)
     elif market == "Handicap +2":
         mm = re.search(r"([+-]?\d+(?:\.\d+)?)", tip_s)
         mag = float(mm.group(1)) if mm else 2.0
@@ -247,7 +263,7 @@ def verify_pick_betway(pick, day_iso, log):
                             and "match winner" in _norm(m.get("name", ""))
                             and _norm(o.get("name", "")) == want))
     else:
-        return {"bettable": True, "note": "market haipimwi kwenye betway — imeruhusiwa"}
+        return {"bettable": False, "note": f"market '{market}' haijawekewa uthibitisho wa Betway"}
 
     if not r:
         return {"bettable": False, "note": f"tip '{tip}' haipo kwenye Betway TZ — NOT BETTABLE",

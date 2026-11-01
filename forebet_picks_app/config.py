@@ -8,8 +8,8 @@ DEFAULTS = {
     # slip target & legs (Phase 5)
     "LEG_ODDS_MIN": 1.05,        # lengo la juhudi chepesi sana ni bure
     "LEG_ODDS_MAX": 3.50,
-    "SLIP_ODDS_MIN": 1.85,
-    "SLIP_ODDS_MAX": 2.50,
+    "SLIP_ODDS_MIN": 1.50,
+    "SLIP_ODDS_MAX": 1.80,
     "MAX_LEGS": 12,
     "FORCE_LEGS": None,          # int N ili kulazimisha legs zingine
     "MIN_LEG_PROB": 0.75,

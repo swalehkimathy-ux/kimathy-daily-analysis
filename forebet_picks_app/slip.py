@@ -27,8 +27,8 @@ def _score_leg(p):
 def build_slips(legs_in: list[dict], topk: int = 5, log=print):
     """Input: list ya kulola (engine v0.3 picks zenye bk_odds + p_cal).
     → list ya slips [{label, legs, total_odds, joint_prob, risk, ev, legs_n}] au []."""
-    o_min = float(_cg("SLIP_ODDS_MIN", 1.85))
-    o_max = float(_cg("SLIP_ODDS_MAX", 2.50))
+    o_min = float(_cg("SLIP_ODDS_MIN", 1.50))
+    o_max = float(_cg("SLIP_ODDS_MAX", 1.80))
     max_legs = int(_cg("MAX_LEGS", 12))
     force = _cg("FORCE_LEGS", None)
 

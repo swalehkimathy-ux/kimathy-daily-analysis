@@ -348,6 +348,32 @@ def _bw_rows_to_probs(rows, home_n, away_n):
             for k, pr in zip(keys, d):
                 probs[("Total Goals", k)] = pr
                 odds[("Total Goals", k)] = labs[k]
+        elif mk == "handicap-goals-over" and any(
+                x in (mname or "").lower() for x in ("home", "host", "away", "guest")):
+            # Team-total goal markets (if the provider exposes them). Keep
+            # them distinct from whole-match Total Goals.
+            mn = _match.normalize(mname or "")
+            if "home" in mn or "host" in mn or (home_n and home_n in mn):
+                team = "Home"
+            elif "away" in mn or "guest" in mn or (away_n and away_n in mn):
+                team = "Away"
+            else:
+                team = None
+            if team:
+                labs = {}
+                for r in rs:
+                    outcome = _match.normalize(r.get("outcome", ""))
+                    line = r.get("line")
+                    if line is None:
+                        continue
+                    side = "Over" if outcome.startswith("over") else ("Under" if outcome.startswith("under") else None)
+                    if side:
+                        labs[f"{team} {side} {float(line):g}"] = r["odds"]
+                keys = list(labs)
+                d = oddsx.devig([labs[k] for k in keys])
+                for k, pr in zip(keys, d):
+                    probs[("Team Goals", k)] = pr
+                    odds[("Team Goals", k)] = labs[k]
         elif mk == "handicap-wdw" and "3-way" in (mname or "").lower().replace("  ", " "):
             labs = {}
             for r in rs:

@@ -42,6 +42,13 @@ ok, pr = V.validate_record({"home": "Lakers", "away": "Bulls", "league": "NBA",
                            "basketball")
 assert ok, f"basketball sane record: {pr}"
 
+# Basketball projected scores are normally >15 and must not be rejected by
+# football's small-goals bound.
+ok, pr = V.validate_record({"home": "Lakers", "away": "Bulls", "league": "NBA",
+                            "probs": [58, 42], "ps": [112, 106], "avg": 218.0,
+                            "status": "Scheduled"}, "basketball")
+assert ok, f"basketball projected score: {pr}"
+
 ok, pr = V.validate_record({"home": "Lakers", "away": "Bulls", "league": "NBA",
                             "probs": [88, 12], "avg": 99.0, "status": "Scheduled"},
                            "basketball")

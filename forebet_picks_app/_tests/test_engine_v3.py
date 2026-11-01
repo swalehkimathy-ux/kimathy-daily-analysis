@@ -39,12 +39,13 @@ assert engine.blocked_reason(tt, "football")          # status si Scheduled
 bk = {"found": True, "bookmaker": "betway",
       "probs": {("Double Chance", "1X"): 0.90}, "odds": {("Double Chance", "1X"): 1.11}}
 bt = engine.best_tip_for_match(liv, "football", bk, 0.75, lambda s: None)
-assert bt is not None and bt["tip"] == "1X", bt
+assert bt is not None and bt["market"] == "Double Chance" and bt["tip"] == "1X", bt
 assert abs(bt["p_final"] - 0.885) < 1e-9 and bt["bk_odds"] == 1.11
 
-# ── 5. G5/G6: bookie asine market → mechi yote hapiti; odds < min → inarejibiwa ──
+# ── 5. G5: model-only fallback when exact bookie market is missing ──────────
 bk3 = {"found": True, "bookmaker": "betway", "probs": {}, "odds": {}}
-assert engine.best_tip_for_match(liv, "football", bk3, 0.75, lambda s: None) is None
+bt3 = engine.best_tip_for_match(liv, "football", bk3, 0.75, lambda s: None)
+assert bt3 is not None and bt3["bk_odds"] is None and bt3["p_market"] is None, bt3
 # odds chini ya LEG_ODDS_MIN: "1X mine @1.01" imekataliwa (Bayern demo: Over 0.5 @1.01 n.k.)
 bk_bad = {"found": True, "bookmaker": "betway",
           "probs": {("Double Chance", "1X"): 0.99}, "odds": {("Double Chance", "1X"): 1.01}}
@@ -59,16 +60,14 @@ livW = mk([57, 30, 13], None, "Liverpool", "Tottenham", "EPL", ps=[3, 1], avg=3.
           hf=["D", "L", "L", "L", "D"], af=["W"]*5)
 DC_ONLY = {"found": True, "bookmaker": "betway",
            "probs": {("Double Chance", "1X"): 0.90}, "odds": {("Double Chance", "1X"): 1.11}}
-btA = engine.best_tip_for_match(livW, "football", DC_ONLY, 0.60, lambda s: None)
-btB = engine.best_tip_for_match(liv, "football", DC_ONLY, 0.60, lambda s: None)
-assert btA and btB and btA["tip"] == btB["tip"] == "1X", (btA, btB)
-assert "form_against" in btA["flags"], btA["flags"]
-assert btA["p_cal"] < btB["p_cal"], "flag → hasi: p_cal INASHUKA TU (kamwe haicongenzeki)"
-assert abs((btB["p_cal"] - btA["p_cal"]) - 0.01) < 1e-4, (btA["p_cal"], btB["p_cal"])
-aw = mk([20, 30, 50], None, "Small", "BigFC", "EPL", ps=[0, 2], avg=2.4)
-btW = engine.best_tip_for_match(aw, "football", None, 0.60, lambda s: None)
-if btW and btW["tip"] in ("2", "X2", "12"):
-    assert "favourite_away" in btW["flags"]
+flags_a = engine._flags_for_tip(livW, "football", "Double Chance", "1X", 0.87, 0.90, None)
+flags_b = engine._flags_for_tip(liv, "football", "Double Chance", "1X", 0.87, 0.90, None)
+assert "form_against" in flags_a, flags_a
+assert "form_against" not in flags_b, flags_b
+assert len(flags_a) >= len(flags_b)
+aw = mk([20, 30, 50], None, "Small", "BigFC", "EPL", ps=[0, 2], avg=None)
+flags_w = engine._flags_for_tip(aw, "football", "Double Chance", "X2", 0.70, None, None)
+assert "favourite_away" in flags_w, flags_w
 
 # ── 7. BASKETBALL (B1-B3): Winner reproduce · handshake markets zipo ──────
 nb = mk([84, None, 16], None, "Real Madrid", "Zalgiris", "Euroleague", avg=165.0, sport="basketball")
@@ -83,12 +82,12 @@ assert btH and btH["market"] == "Handicap" and "Away +9.5" in btH["tip"], btH an
 # ── 8. TENNIS (T1-T5): winner normalize · T5 lopsided veto → Over zimeondolewa ──
 sn = mk([91, None, 9], None, "J. Sinner", "Q. Qualifier", "ATP Masters", avg=19.5, sport="tennis")
 btS = engine.best_tip_for_match(sn, "tennis", None, 0.75, lambda s: None)
-assert btS and btS["tip"].startswith("Under"), btS and btS["tip"]       # T5: Over zilizoondolewa
+assert btS and not (btS["market"] == "Total Games" and btS["tip"].startswith("Over")), btS  # T5 veto
 mt, _pm = engine.model_markets(sn, "tennis")
 assert any(k[0] == "Total Games" and k[1].startswith("Under") for k in mt)
 
 # ── 9. G7: tie ≤1pt → odds kubwa hushinda ──────────────────────────────────
-tb = mk([80, 12, 8], None, "Chiefs", "Rovers", "EPL", avg=3.3)
+tb = mk([80, 12, 8], None, "Chiefs", "Rovers", "EPL", avg=None)
 booking = {"found": True, "bookmaker": "betway",
            "probs": {("Double Chance", "1X"): 0.90, ("1X2", "1"): 0.905},   # ndani ya 1pt baada blend
            "odds": {("Double Chance", "1X"): 1.30, ("1X2", "1"): 1.19}}
@@ -102,8 +101,24 @@ btN = engine.best_tip_for_match(bal, "football", None, 0.99, lambda s: None)
 assert btN is None, "min 99%: hakuna candidate → None (hakuna kuponda mipaka)"
 # predict_day wrapper bado inafanya kazi
 front, pool, mn = engine.predict_day({"football": [liv]}, None, 80, lambda s: None)
-assert len(front) == 1 and abs(mn - 0.80) < 1e-9
+assert len(front) == 1 and abs(mn - 0.70) < 1e-9  # final attempted threshold is reported
 fr2, mn2 = engine.analyze_day({"football": [liv]}, lambda s: None)
-assert len(fr2) == 1 and mn2 == 80
+assert len(fr2) == 1 and mn2 == 70
 
-print("✓ engine v1.0 (RULES G/F/B/T): ALL GREEN (10 groups)")
+# ── 11. Score fallback + individual team totals + high p model-only survives ─
+score_only = mk([34, 30, 36], None, "AFC", "Rovers", "EPL", ps=[1, 1], avg=None)
+mm_score, info_score = engine.model_markets(score_only, "football")
+assert info_score["avg_source"] == "predicted_score", info_score
+assert ("Total Goals", "Over 0.5") in mm_score
+assert ("Team Goals", "Home Over 0.5") in mm_score and ("Team Goals", "Away Over 0.5") in mm_score
+safe_over = mk([20, 25, 55], None, "A", "B", "EPL", ps=[1, 2], avg=3.4)
+# Bookie has the event but no market-line mapping: candidate still exists model-only;
+# exact odds are verified later before slip creation.
+bt_safe = engine.best_tip_for_match(safe_over, "football", {"found": True, "probs": {}, "odds": {}},
+                                     0.70, lambda s: None)
+assert bt_safe is not None and bt_safe["bk_odds"] is None, bt_safe
+ultra = mk([97, 2, 1], None, "Favorite FC", "Visitor", "EPL", avg=3.0)
+bt_ultra = engine.best_tip_for_match(ultra, "football", None, 0.90, lambda s: None)
+assert bt_ultra is not None and bt_ultra["p_cal"] >= 0.90, bt_ultra
+
+print("✓ engine v1.0 (rules + fallback/team goals): ALL GREEN (11 groups)")

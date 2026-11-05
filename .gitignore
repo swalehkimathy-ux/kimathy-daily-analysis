@@ -1,0 +1,29 @@
+# SIRRI — kamwe zisiingie kwenye repo
+.env
+.env.local
+.env.*
+!.env.example
+*.key
+*.pem
+*token*
+*secret*
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Matokeo na kumbukumbu za ndani
+*.xlsx
+kimathy_captures/
+logs/
+cache/
+output/
+
+# Mfumo
+.DS_Store
+Thumbs.db
+desktop.ini

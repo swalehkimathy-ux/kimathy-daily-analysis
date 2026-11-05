@@ -1,0 +1,108 @@
+{
+  "timezone": "Africa/Dar_es_Salaam",
+  "min_minutes_before_kickoff": 60,
+  "sports": ["football", "basketball", "tennis"],
+
+  "accumulator": {
+    "combined_odds_min": 1.80,
+    "combined_odds_max": 2.00,
+    "max_legs": 12,
+    "force_legs": null,
+    "correlation_haircut": 0.98
+  },
+
+  "leg_filters": {
+    "leg_odds_min": 1.05,
+    "leg_odds_max": 3.50,
+    "min_probability": 0.75,
+    "block_friendlies": true,
+    "block_youth_and_women": true,
+    "max_flags_before_drop": 3
+  },
+
+  "probability": {
+    "weight_model": 0.5,
+    "flag_penalty": 0.01,
+    "max_flag_penalty": 0.03,
+    "uncalibrated_cap": 0.95,
+    "calibration_enabled": false
+  },
+
+  "sources": {
+    "forebet": {
+      "enabled": true,
+      "is_primary": true
+    },
+    "tipsters": {
+      "footballwhispers": {
+        "enabled": true,
+        "url": "https://www.footballwhispers.com/predictions",
+        "trust": "opinion_only"
+      },
+      "statarea": {
+        "enabled": true,
+        "url": "https://www.statarea.com/predictions/today",
+        "trust": "opinion_only"
+      },
+      "sportskeeda": {
+        "enabled": true,
+        "url": "https://www.sportskeeda.com/gaming/betting-predictions",
+        "trust": "opinion_only"
+      },
+      "windrawwin": {
+        "enabled": true,
+        "url": "https://www.windrawwin.com/predictions/today/",
+        "trust": "opinion_only"
+      },
+      "predictz": {
+        "enabled": true,
+        "url": "https://www.predictz.com/predictions/today/",
+        "trust": "opinion_only"
+      }
+    }
+  },
+
+  "bookmakers": {
+    "betway_tz": {
+      "enabled": true,
+      "role": "primary",
+      "market_discovery": false,
+      "note": "Highlights feed inatoa Win/Draw/Win tu; inathibitisha soko lililochaguliwa."
+    },
+    "betpawa_tz": {
+      "enabled": true,
+      "role": "secondary",
+      "market_discovery": true,
+      "note": "API ya event inatoa masoko YOTE - ndiyo chanzo cha ugunduzi mpana wa masoko."
+    },
+    "afropari": {
+      "enabled": false,
+      "role": "not_implemented",
+      "market_discovery": false,
+      "note": "HAIJATEKELEZWA: endpoint halisi haijathibitishwa. Ili kuongeza: jaza base_url + njia za API kwenye bookies/afropari_tz.py."
+    }
+  },
+
+  "network": {
+    "timeout_s": 30,
+    "retries": 2,
+    "retry_backoff_s": 2.0,
+    "min_interval_s": 1.2,
+    "allow_browser_fallback": true,
+    "browser_wait_s": 90,
+    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+  },
+
+  "output": {
+    "folder": "DOWNLOADS",
+    "filename_prefix": "KIMATHY_SMART_BETTING",
+    "save_raw_captures": true,
+    "captures_subfolder": "kimathy_captures"
+  },
+
+  "run": {
+    "reverify_before_export": true,
+    "max_events_per_run": 1500,
+    "shortlist_h2h_max": 40
+  }
+}

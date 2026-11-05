@@ -1,0 +1,8 @@
+# KIMATHY SMART BETTING ENGINE — vyanzo vya Python (Python 3.10+)
+# Sakinisha:  pip install -r requirements.txt
+# Kisha (mara moja, kwa Cloudflare):  python -m playwright install chromium
+
+curl_cffi>=0.7        # Chrome impersonation — Forebet/bookmakers huzuia requests za kawaida
+beautifulsoup4>=4.12  # DOM parsing (basketball/tennis + tipster pages)
+openpyxl>=3.1         # faili la Excel .xlsx
+playwright>=1.44      # HIAARI: browser halisi wa kupita Cloudflare

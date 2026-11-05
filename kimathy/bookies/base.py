@@ -31,6 +31,9 @@ class Offer:
     event_id: str = ""
     retrieved_at: str = ""
     source_url: str = ""
+    display_name: str = ""          # jina la kuonyeshwa la bookmaker (kama "Over/Under | Full Time")
+    bookmaker_prob: float | None = None   # nambari ya bookmaker mwenyewe (TAARIFA tu;
+                                          # injini hutumia devig kutoka odds, si nambari hii)
 
     @property
     def usable(self) -> bool:

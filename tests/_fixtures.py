@@ -7,8 +7,27 @@ from __future__ import annotations
 
 import datetime as _dt
 
+import copy
+
 from kimathy import clock
 from kimathy.bookies.base import Offer
+from kimathy.config import Config, load
+
+
+def merged_config(overrides: dict) -> Config:
+    """Mipangilio ya majaribio JUU YA config.json halisi.
+
+    Muhimu: `Config({...})` pekee ingeanza kutoka DEFAULTS tupu (bookmakers = {}),
+    na ingefanya bookmaker wote kuonekana kama wamezimwa. Kosa hilo limegunduliwa
+    kwenye jaribio la data hai na limerekebishwa hapa.
+    """
+    base = copy.deepcopy(load().data)
+    for k, v in (overrides or {}).items():
+        if isinstance(v, dict) and isinstance(base.get(k), dict):
+            base[k] = {**base[k], **v}
+        else:
+            base[k] = v
+    return Config(base)
 
 
 def kickoff_in(hours: float, minutes: int = 0) -> _dt.datetime:

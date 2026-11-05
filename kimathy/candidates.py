@@ -14,18 +14,24 @@ from . import analyze, clock, markets
 from .bookies.base import devig, overround
 
 # Majina ya masoko kwenye bookmaker (majaribio kadhaa — tunalinganisha kwa maandishi)
+# Majina ya masoko. YANAYOongoza ni majina HALISI ya betPawa TZ
+# (yamethibitishwa kwa data hai, 2026-11-05); yaliyofuata ni kwa bookmaker wengine.
 MARKET_ALIASES = {
-    "1x2": ["1X2", "Match Result", "Full Time Result", "Win/Draw/Win", "Match Winner", "3-Way Result"],
-    "double_chance": ["Double Chance"],
-    "draw_no_bet": ["Draw No Bet"],
-    "total_goals": ["Total Goals", "Over/Under", "Goals Over/Under", "Total"],
-    "btts": ["Both Teams To Score", "BTTS", "Both Teams Score"],
-    "team_goals": ["Team Total Goals", "Home Team Total Goals", "Away Team Total Goals", "Team Goals"],
-    "asian_handicap": ["Asian Handicap", "Handicap Asian"],
-    "european_handicap": ["Handicap", "European Handicap", "3-Way Handicap"],
-    "first_to_score": ["First Team To Score", "First To Score"],
-    "correct_score": ["Correct Score"],
-    "winning_margin": ["Winning Margin", "Winning Margins"],
+    "1x2": ["1X2 - FT", "1X2", "Match Result", "Full Time Result", "Win/Draw/Win",
+            "Match Winner", "3-Way Result"],
+    "double_chance": ["Double Chance - FT", "Double Chance"],
+    "draw_no_bet": ["Draw No Bet - FT", "Draw No Bet"],
+    "total_goals": ["Total Score Over/Under - FT", "Total Goals", "Over/Under",
+                    "Goals Over/Under", "Total"],
+    "btts": ["Both Teams To Score - FT", "Both Teams To Score", "BTTS"],
+    "team_goals": ["Total Score Over/Under - FT - Home Team",
+                   "Total Score Over/Under - FT - Away Team",
+                   "Team Total Goals", "Home Team Total Goals", "Away Team Total Goals"],
+    "asian_handicap": ["Asian Handicap - FT", "Asian Handicap"],
+    "european_handicap": ["Handicap 1X2 - FT", "3-Way Handicap", "European Handicap", "Handicap"],
+    "first_to_score": ["Goal", "Next Goal", "First Team To Score", "First To Score"],
+    "correct_score": ["Correct Score (26 Outcomes)", "Correct Score - FT", "Correct Score"],
+    "winning_margin": ["Winning Margin - FT", "Winning Margin", "Winning Margins"],
     "winner": ["Match Winner", "1X2", "Moneyline", "Match Betting", "2-Way Result"],
     "handicap": ["Handicap", "Point Spread", "Spread", "Handicap (incl. OT)"],
     "total_points": ["Total Points", "Points Over/Under", "Total"],
@@ -33,8 +39,16 @@ MARKET_ALIASES = {
     "total_games": ["Total Games", "Games Over/Under"],
 }
 
+# Soko la Team Goals: upande unaoamua ni JINA LA SOKO (Home Team / Away Team), si chaguo.
+TEAM_GOALS_MARKET = {
+    "Home": ["Total Score Over/Under - FT - Home Team", "Team Total Goals - Home",
+             "Home Team Total Goals"],
+    "Away": ["Total Score Over/Under - FT - Away Team", "Team Total Goals - Away",
+             "Away Team Total Goals"],
+}
+
 SELECTION_ALIASES = {
-    "1": ["1", "Home"], "X": ["X", "Draw"], "2": ["2", "Away"],
+    "1": ["1", "Home"], "X": ["X", "Draw"], "2": ["2", "Away"], "None": ["None"],
     "1X": ["1X", "Home or Draw"], "X2": ["X2", "Draw or Away"], "12": ["12", "Home or Away"],
     "Yes": ["Yes"], "No": ["No"],
     "Over": ["Over"], "Under": ["Under"],
@@ -79,8 +93,14 @@ def blocked_reason(rec: dict, sport: str, cfg) -> str | None:
 def _best_offer(provider, offers, key: str, selection: str, line, rec: dict):
     """Jaribu majina kadhaa ya soko/chaguo; rudisha Offer bora (au None)."""
     sel_names = SELECTION_ALIASES.get(selection, [selection])
+    if key == "team_goals":
+        side = selection.split()[0]
+        m_aliases = TEAM_GOALS_MARKET.get(side, MARKET_ALIASES.get(key, [key]))
+        sel_names = [selection.split()[-1]] + sel_names
+    else:
+        m_aliases = MARKET_ALIASES.get(key, [key])
     best, best_score = None, -1.0
-    for m_alias in MARKET_ALIASES.get(key, [key]):
+    for m_alias in m_aliases:
         for s_alias in sel_names:
             hit = provider.select_offer(offers, m_alias, s_alias, line, False, rec)
             if hit is None:
@@ -227,13 +247,13 @@ def _selections_for(mdef, sel, line) -> list[str]:
             side = sel.split()[0]
             return [f"{side} Over", f"{side} Under"]
         if mdef.key in ("asian_handicap", "handicap", "games_handicap"):
-            return ["Home", "Away"] if mdef.key == "asian_handicap" else (
+            return ["1", "2"] if mdef.key == "asian_handicap" else (
                 ["P1", "P2"] if mdef.key == "games_handicap" else ["Home", "Away"])
         return ["Over", "Under"]
     if mdef.key == "european_handicap":
-        return ["+2 Home", "Draw +2", "+2 Away"]
+        return ["1", "X", "2"]
     if mdef.key == "first_to_score":
-        return ["Home", "Away", "None"]
+        return ["1", "None", "2"]
     return [sel]
 
 

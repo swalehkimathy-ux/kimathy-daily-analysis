@@ -243,23 +243,25 @@ def model_markets(rec: dict, sport: str) -> tuple[dict, dict]:
                 ov = 1.0 - sum(_pois(i, lam) for i in range(int(line) + 1))
                 out[("team_goals", f"{side} Over", line)] = ov
                 out[("team_goals", f"{side} Under", line)] = 1 - ov
-        # Asian handicap (mistari ya nusu)
-        for line in (-2.5, -1.5, -0.5, 0.5, 1.5, 2.5):
-            ph = sum(g[i][j] for i in range(GRID) for j in range(GRID)
-                     if (i + line) > j)
-            out[("asian_handicap", "Home", line)] = ph
-            out[("asian_handicap", "Away", line)] = 1 - ph
-        # European handicap +2 (njia tatu)
-        eh_h = sum(g[i][j] for i in range(GRID) for j in range(GRID) if (i + 2) > j)
-        eh_d = sum(g[i][j] for i in range(GRID) for j in range(GRID) if (i + 2) == j)
-        out[("european_handicap", "+2 Home", None)] = eh_h
-        out[("european_handicap", "Draw +2", None)] = eh_d
-        out[("european_handicap", "+2 Away", None)] = max(0.0, 1 - eh_h - eh_d)
-        # timu ya kwanza kufunga (makadirio: uwiano wa λ, hakuna data ya muda)
+        # Asian Handicap — mistari ya nusu, `line` ni hcp kutoka mtazamo wa timu ya nyumbani
+        # (betPawa: specifier {"hcp": "-1.5"} = nyumbani inatoa magoli 1.5).
+        for line in (-3.5, -2.5, -1.5, -0.5, 0.5, 1.5, 2.5, 3.5):
+            ph = sum(g[i][j] for i in range(GRID) for j in range(GRID) if (i + line) > j)
+            out[("asian_handicap", "1", line)] = ph
+            out[("asian_handicap", "2", line)] = 1 - ph
+        # European / 3-Way Handicap — mistari kamili, `line` ni hcp ya nyumbani
+        for line in (-3, -2, -1, 1, 2, 3):
+            eh_h = sum(g[i][j] for i in range(GRID) for j in range(GRID) if (i + line) > j)
+            eh_d = sum(g[i][j] for i in range(GRID) for j in range(GRID) if (i + line) == j)
+            out[("european_handicap", "1", float(line))] = eh_h
+            out[("european_handicap", "X", float(line))] = eh_d
+            out[("european_handicap", "2", float(line))] = max(0.0, 1 - eh_h - eh_d)
+        # Timu ya kwanza kufunga (betPawa: soko "Goal", chaguo 1 / None / 2).
+        # Makadirio: uwiano wa λ. Hakuna data ya muda wa magoli — flag itaonyeshwa.
         if (lh + la) > 0:
             none_p = _pois(0, lh) * _pois(0, la)
-            out[("first_to_score", "Home", None)] = (lh / (lh + la)) * (1 - none_p)
-            out[("first_to_score", "Away", None)] = (la / (lh + la)) * (1 - none_p)
+            out[("first_to_score", "1", None)] = (lh / (lh + la)) * (1 - none_p)
+            out[("first_to_score", "2", None)] = (la / (lh + la)) * (1 - none_p)
             out[("first_to_score", "None", None)] = none_p
         # correct score / winning margin (variance kubwa)
         for i in range(6):

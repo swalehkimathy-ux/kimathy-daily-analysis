@@ -83,26 +83,49 @@ def markets(event_id, timeout: int = 25) -> list[dict]:
     return ev.get("markets") or []
 
 
+def _to_float(v):
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
+
+
 def snapshot_event(event_id, timeout: int = 25) -> list[Offer]:
-    """Masoko YOTE ya tukio — jina la soko, mstari, chaguo, odds, hali ya kusimamishwa."""
+    """Masoko YOTE ya tukio — jina la soko, mstari, chaguo, odds, hali ya kusimamishwa.
+
+    Muundo halisi wa API (umethibitishwa kwa data hai, 2026-11-05):
+        markets[i]["marketType"] = {"id","name","displayName", ...}
+        markets[i]["row"][j]["specifier"] = {"total": "2.5"} | {"hcp": "-1.5"} | {"number": "1"}
+        markets[i]["row"][j]["prices"][k] = {"name","odds","suspended","probability":{"win":..}}
+
+    KUMBUKA: toleo la zamani la code lilisoma `m["betTypeId"]` na `m["name"]` — njia hizo
+    HAZIPO tena, ndiyo maana majina ya masoko yalikuwa matupu. Imerekebishwa hapa.
+    """
     ts = clock.now_tz().isoformat(timespec="seconds")
     url = f"{BASE}/events/{event_id}"
     rows: list[Offer] = []
     for m in markets(event_id, timeout=timeout):
-        mk = m.get("betTypeId") or m.get("name") or ""
+        mt = m.get("marketType") or {}
+        mk_id = str(mt.get("id") or "")
+        mk_name = str(mt.get("name") or "")
+        mk_display = str(mt.get("displayName") or "")
         for row in (m.get("row") or []):
             spec = row.get("specifier") or {}
-            line = spec.get("total") if spec.get("total") is not None else spec.get("hcp")
+            raw_line = spec.get("total") if spec.get("total") is not None else spec.get("hcp")
+            line = _to_float(raw_line)
             for p in (row.get("prices") or []):
+                prob = (p.get("probability") or {}).get("win")
                 rows.append(Offer(
                     bookmaker=NAME,
-                    market=str(mk),
-                    market_name=str(m.get("name") or ""),
+                    market=mk_id,
+                    market_name=mk_name,
                     outcome=str(p.get("name") or ""),
-                    odds=p.get("odds"),
+                    odds=_to_float(p.get("odds")),
                     line=line,
                     suspended=bool(p.get("suspended")),
                     event_id=str(event_id), retrieved_at=ts, source_url=url,
+                    display_name=mk_display,
+                    bookmaker_prob=_to_float(prob),
                 ))
     return rows
 

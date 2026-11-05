@@ -115,11 +115,52 @@ Orodha kamili na sababu zake iko `kimathy/markets.py`.
 ## 6. Majaribio
 
 ```
-python tests/run_all.py
+python tests/run_all.py          # majaribio 8 — yote offline
+python tests/live_smoke.py       # jaribio la DATA HAI (linahitaji mtandao)
 ```
 
-Majaribio 8, **yote offline** (hakuna mtandao). Yanatekeleza code halisi ya injini,
-si nakala yake — ikiwemo mtiririko mzima kutoka rekodi hadi faili la `.xlsx`.
+Majaribio 8 ya kawaida ni **offline** (hakuna mtandao). Yanatekeleza code halisi ya
+injini, si nakala yake — ikiwemo mtiririko mzima kutoka rekodi hadi faili la `.xlsx`.
+
+### Matokeo ya uthibitishaji (2026-11-05)
+
+| Kipimo | Matokeo |
+|---|---|
+| Majaribio 8 (offline) | **8/8 GREEN** |
+| CLI halisi `python -m kimathy.run` | **imefanya kazi**, `.xlsx` imetengenezwa |
+| betPawa TZ — orodha ya matukio | **IMEFIKIKA** · matukio 97 ya mpira (leo) |
+| betPawa TZ — masoko ya tukio moja | **IMEFIKIKA** · offers 1165 · **aina 117 za masoko** |
+| Jaribio la data hai (njia kamili) | **QUALIFIED ACCUMULATOR** · miguu 3 · odds 1.811 · joint 45.8% · **EV −0.170** |
+| Betway TZ | **HTTP 403** kutoka IP ya datacenter (inatarajiwa kufanya kazi kwenye PC yako) |
+| Forebet | **HTTP 403** kutoka IP ya datacenter (inatarajiwa kufanya kazi kwenye PC yako) |
+| windrawwin / predictz | **HTTP 200** (zinafikika) |
+| sportskeeda | HTTP 403 |
+| footballwhispers / statarea | hazikufikika wakati wa kipimo |
+
+> Kumbuka: jaribio la data hai **halikutumia Forebet** (haikufikika). `probs` zilikokotolewa
+> kutoka bei za 1X2 za betPawa yenyewe. Kwa hiyo ni uthibitisho wa **msimbo**, si uchambuzi halisi.
+
+### Muundo halisi wa API ya betPawa (umethibitishwa)
+
+```
+markets[i]["marketType"]["id"]        → "5000"
+markets[i]["marketType"]["name"]      → "Total Score Over/Under - FT"
+markets[i]["marketType"]["displayName"] → "Over/Under | Full Time"
+markets[i]["row"][j]["specifier"]     → {"total": "2.5"} | {"hcp": "-1.5"} | {"number": "1"}
+markets[i]["row"][j]["prices"][k]     → {"name","odds","suspended","probability":{"win":..}}
+```
+
+Toleo la zamani la code lilisoma `market["betTypeId"]` na `market["name"]` — **njia hizo
+hazipo tena**, na hilo ndilo lilikuwa likifanya majina ya masoko kuwa matupu. Limerekebishwa.
+
+Majina halisi ya masoko yanayolingana na injini:
+`1X2 - FT` · `Double Chance - FT` · `Draw No Bet - FT` · `Total Score Over/Under - FT` ·
+`Total Score Over/Under - FT - Home Team` · `Total Score Over/Under - FT - Away Team` ·
+`Both Teams To Score - FT` · `Asian Handicap - FT` · `Handicap 1X2 - FT` ·
+`Correct Score (26 Outcomes)` · `Winning Margin - FT` · `Goal` (timu ya kwanza kufunga).
+
+betPawa **inatoa** masoko ya kona, kadi (bookings) na player shots — lakini injini
+**haiyachambui** kwa sababu hakuna chanzo cha takwimu hizo. Hii ni tabia iliyokusudiwa.
 
 ---
 

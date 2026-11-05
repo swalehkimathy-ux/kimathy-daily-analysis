@@ -53,7 +53,8 @@ def main() -> int:
         rt = fetcher.try_fetch(meta.get("url", ""), source=name)
         if rt.ok:
             p = save_capture(cfg, f"diag_{name}", rt.text, log=lambda *a: None)
-            print(f"    {name:<18s}: HTTP {rt.status} · OK · HTML imehifadhiwa → {p}")
+            tail = f" · HTML → {p}" if p else " · (uhifadhi wa HTML umezimwa kwenye config)"
+            print(f"    {name:<18s}: HTTP {rt.status} · OK{tail}")
         else:
             print(f"    {name:<18s}: ✗ {rt.error}")
 
